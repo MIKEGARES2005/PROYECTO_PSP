@@ -736,6 +736,26 @@ function Restore-ApplicationDatabase {
         }
     }
 
+    $foreignKeyCheckConstraints = @(
+        'chk_users_perfil',
+        'chk_asignaciones_titular',
+        'chk_asignaciones_recurso',
+        'chk_asignaciones_devolucion_aprobada',
+        'chk_incidencias_cierre',
+        'chk_incidencias_resolucion',
+        'chk_incidencias_reportante',
+        'chk_inscripciones_reporte',
+        'chk_inscripciones_revision'
+    )
+    foreach ($constraintName in $foreignKeyCheckConstraints) {
+        $constraintPattern = '(?s),\s*CONSTRAINT\s+`' + [regex]::Escape($constraintName) + '`\s+CHECK\s*\(.*?\)(?=\s*,\s*(?:CONSTRAINT|KEY)|\s*\)\s*ENGINE)'
+        $updatedBackup = [regex]::Replace($backupContent, $constraintPattern, '')
+        if ($updatedBackup -ne $backupContent) {
+            Write-Host "Se omitio $constraintName por compatibilidad con MariaDB 10.4." -ForegroundColor Yellow
+            $backupContent = $updatedBackup
+        }
+    }
+
     $sqlPath = Join-Path $script:TemporaryRoot 'database-restore.sql'
     $outputPath = Join-Path $script:TemporaryRoot 'database-restore.out.log'
     $errorPath = Join-Path $script:TemporaryRoot 'database-restore.err.log'
