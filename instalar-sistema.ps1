@@ -709,6 +709,16 @@ function Restore-ApplicationDatabase {
     }
 
     $backupContent = [System.IO.File]::ReadAllText($script:DatabaseBackupPath)
+    $mariaDbCompatibleBackup = [regex]::Replace(
+        $backupContent,
+        '(?s),\s*CONSTRAINT\s+`chk_alertas_flujo`\s+CHECK\s*\(.*?\)(?=\s*,\s*CONSTRAINT\s+`chk_alertas_fechas`)',
+        ''
+    )
+    if ($mariaDbCompatibleBackup -ne $backupContent) {
+        Write-Host 'Se omitio chk_alertas_flujo porque MariaDB no permite CHECK sobre columnas con clave foranea.' -ForegroundColor Yellow
+        $backupContent = $mariaDbCompatibleBackup
+    }
+
     $process.StandardInput.Write($backupContent)
     $process.StandardInput.Close()
     $standardOutput = $process.StandardOutput.ReadToEnd()
