@@ -15,6 +15,7 @@ $script:VcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
 $script:DatabaseName = 'sistema_equipos'
 $script:DatabaseUsername = 'sistema_equipos_app'
 $script:DatabasePort = 3306
+$script:DatabaseBackupPath = 'C:\proyecto psp\backup\sistema_equipos_backup.sql'
 $script:ApplicationPort = 8000
 $script:TemporaryRoot = Join-Path $env:TEMP ('sistema-equipos-' + [guid]::NewGuid().ToString('N'))
 $script:StartedMySqlForSetup = $false
@@ -402,31 +403,7 @@ function Install-Cloudflared {
         return
     }
 
-    Write-InstallerStep 'Descargando cloudflared sin iniciar el tunel'
-    $headers = @{ 'User-Agent' = 'SistemaEquiposWindowsInstaller' }
-    $release = Invoke-RestMethod `
-        -Uri 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest' `
-        -Headers $headers
-    $asset = $release.assets |
-        Where-Object { $_.name -eq 'cloudflared-windows-amd64.exe' } |
-        Select-Object -First 1
-
-    if ($null -eq $asset -or $asset.digest -notmatch '^sha256:([a-fA-F0-9]{64})$') {
-        throw 'La version mas reciente de cloudflared no incluye un ejecutable Windows x64 con SHA-256 verificable.'
-    }
-
-    $cloudflaredDirectory = Split-Path -Parent $script:CloudflaredPath
-    New-Item -ItemType Directory -Path $cloudflaredDirectory -Force | Out-Null
-    $downloadPath = Join-Path $script:TemporaryRoot 'cloudflared-windows-amd64.exe'
-    Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $downloadPath
-
-    $expectedHash = $asset.digest.Substring(7).ToLowerInvariant()
-    $actualHash = (Get-FileHash -LiteralPath $downloadPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actualHash -ne $expectedHash) {
-        throw 'La verificacion SHA-256 del ejecutable cloudflared fallo.'
-    }
-
-    Move-Item -LiteralPath $downloadPath -Destination $script:CloudflaredPath
+    throw "No se encontro cloudflared.exe en $script:CloudflaredPath. Copia la carpeta C:\cloudflared antes de ejecutar el instalador."
 }
 
 function Assert-MySqlListenerIsLocal {
@@ -613,6 +590,49 @@ FLUSH PRIVILEGES;
     Invoke-MySql -Sql $sql | Out-Null
 }
 
+function Test-DatabaseBackup {
+    if (-not (Test-Path -LiteralPath $script:DatabaseBackupPath -PathType Leaf)) {
+        return $false
+    }
+
+    $backup = Get-Item -LiteralPath $script:DatabaseBackupPath
+    if ($backup.Length -eq 0) {
+        throw "El backup de base de datos esta vacio: $script:DatabaseBackupPath"
+    }
+
+    return $true
+}
+
+function Restore-ApplicationDatabase {
+    Write-InstallerStep "Restaurando el backup SQL desde $script:DatabaseBackupPath"
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo.FileName = $script:MySqlPath
+    $process.StartInfo.Arguments = '--protocol=tcp --host=127.0.0.1 --port=3306 --user=root --database=' + $script:DatabaseName + ' --binary-mode=1'
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.RedirectStandardInput = $true
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.CreateNoWindow = $true
+
+    if (-not $process.Start()) {
+        throw 'No se pudo iniciar el cliente de MariaDB para restaurar el backup.'
+    }
+
+    $backupContent = [System.IO.File]::ReadAllText($script:DatabaseBackupPath)
+    $process.StandardInput.Write($backupContent)
+    $process.StandardInput.Close()
+    $standardOutput = $process.StandardOutput.ReadToEnd()
+    $standardError = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    $exitCode = $process.ExitCode
+    $process.Dispose()
+
+    if ($exitCode -ne 0) {
+        throw "MariaDB rechazo la restauracion del backup. $standardError"
+    }
+}
+
 function Stop-MySqlIfStartedByInstaller {
     if (-not $script:StartedMySqlForSetup -or $script:MySqlStopAttempted) {
         return
@@ -697,8 +717,8 @@ if ($PlanOnly) {
     Write-Output 'Microsoft Visual C++ Redistributable: firma digital oficial verificada'
     Write-Output 'Node.js: ultima version LTS oficial (SHA-256 verificado)'
     Write-Output 'Composer: instalador con firma SHA-384 oficial'
-    Write-Output 'Cloudflared: binario oficial, SHA-256 verificado; no inicia el tunel'
-    Write-Output 'Base de datos: MariaDB local nueva; sin sobrescribir bases existentes'
+    Write-Output "Cloudflared: se valida la copia local en $script:CloudflaredPath"
+    Write-Output "Base de datos: se restaura $script:DatabaseBackupPath si existe; si no, se crea limpia"
     Write-Output 'Firewall: TCP 8000 limitado a la subred local y perfil privado'
     exit 0
 }
@@ -709,8 +729,8 @@ try {
     }
 
     $operatingSystem = Get-CimInstance Win32_OperatingSystem
-    if ($operatingSystem.Caption -notmatch 'Windows 10') {
-        throw "Este instalador esta preparado para Windows 10; se detecto '$($operatingSystem.Caption)'."
+    if ($operatingSystem.Caption -notmatch 'Windows 10|Windows 11') {
+        throw "Este instalador esta preparado para Windows 10 y Windows 11; se detecto '$($operatingSystem.Caption)'."
     }
 
     if (-not (Test-Administrator)) {
@@ -732,7 +752,11 @@ try {
 
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     New-Item -ItemType Directory -Path $script:TemporaryRoot -Force | Out-Null
-    $administratorCredentials = Read-AdministratorCredentials
+    $hasDatabaseBackup = Test-DatabaseBackup
+    $administratorCredentials = $null
+    if (-not $hasDatabaseBackup) {
+        $administratorCredentials = Read-AdministratorCredentials
+    }
     $databasePassword = Get-RandomDatabasePassword
     $appUrl = 'http://' + (Get-LanIPv4Address) + ':' + $script:ApplicationPort
 
@@ -743,7 +767,7 @@ try {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $script:TemporaryRoot
 
     $extractedRoot = Get-ChildItem -LiteralPath $script:TemporaryRoot -Directory |
-        Where-Object { $_.Name -like 'sistema_equipos-*' } |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'artisan') } |
         Select-Object -First 1
     if ($null -eq $extractedRoot -or -not (Test-Path -LiteralPath (Join-Path $extractedRoot.FullName 'artisan'))) {
         throw 'El archivo descargado de GitHub no contiene el proyecto Laravel esperado.'
@@ -815,18 +839,24 @@ try {
     Start-MySqlForSetup
     New-ApplicationDatabase -DatabasePassword $databasePassword
 
+    if ($hasDatabaseBackup) {
+        Restore-ApplicationDatabase
+    }
+
     Invoke-CheckedCommand -FilePath $script:PhpPath -Arguments @('artisan', 'key:generate', '--force')
     Invoke-CheckedCommand -FilePath $script:PhpPath -Arguments @('artisan', 'config:clear')
     Invoke-CheckedCommand -FilePath $script:PhpPath -Arguments @('artisan', 'migrate', '--force')
 
-    $env:SEED_ADMIN_USERNAME = $administratorCredentials.Username
-    $env:SEED_ADMIN_PASSWORD = $administratorCredentials.Password
-    try {
-        Invoke-CheckedCommand -FilePath $script:PhpPath `
-            -Arguments @('artisan', 'db:seed', '--class=AdminUserSeeder', '--force')
-    } finally {
-        Remove-Item Env:\SEED_ADMIN_USERNAME -ErrorAction SilentlyContinue
-        Remove-Item Env:\SEED_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+    if (-not $hasDatabaseBackup) {
+        $env:SEED_ADMIN_USERNAME = $administratorCredentials.Username
+        $env:SEED_ADMIN_PASSWORD = $administratorCredentials.Password
+        try {
+            Invoke-CheckedCommand -FilePath $script:PhpPath `
+                -Arguments @('artisan', 'db:seed', '--class=AdminUserSeeder', '--force')
+        } finally {
+            Remove-Item Env:\SEED_ADMIN_USERNAME -ErrorAction SilentlyContinue
+            Remove-Item Env:\SEED_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+        }
     }
 
     Invoke-CheckedCommand -FilePath $script:PhpPath -Arguments @('artisan', 'config:clear')
@@ -836,7 +866,11 @@ try {
 
     Write-Host "`nInstalacion completada." -ForegroundColor Green
     Write-Host "Proyecto: $script:ProjectRoot"
-    Write-Host "Usuario administrador: $($administratorCredentials.Username)"
+    if ($hasDatabaseBackup) {
+        Write-Host 'Base de datos restaurada desde el backup proporcionado.'
+    } else {
+        Write-Host "Usuario administrador: $($administratorCredentials.Username)"
+    }
     Write-Host "URL inicial: $appUrl"
     Write-Host 'Inicia el sistema desde el acceso directo del Escritorio. cloudflared quedo instalado, pero no se inicio.'
     Write-Host 'No se habilito acceso remoto a MariaDB; TCP 3306 permanece restringido a localhost.'
