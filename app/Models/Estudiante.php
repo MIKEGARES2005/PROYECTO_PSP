@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 class Estudiante extends Model
 {
@@ -71,6 +72,35 @@ class Estudiante extends Model
         return $this->hasMany(HistorialSeguimientoEstudiante::class);
     }
 
+    public function aproboTodasLasMateriasDeCuarto(): bool
+    {
+        $materiasCuarto = Materia::query()
+            ->whereIn('semestre', ['Cuarto', 'cuarto', '4'])
+            ->where('estado', 'activo')
+            ->pluck('id');
+
+        if ($materiasCuarto->isEmpty()) {
+            return false;
+        }
+
+        $materiasAprobadas = $this->inscripciones()
+            ->whereIn('materia_id', $materiasCuarto)
+            ->where('estado', 'Aprobado')
+            ->where('resultado_final', 'Aprobado')
+            ->lockForUpdate()
+            ->pluck('materia_id')
+            ->merge(
+                DB::table('inscripciones_archivadas')
+                    ->where('estudiante_id', $this->id)
+                    ->whereIn('materia_id', $materiasCuarto)
+                    ->where('resultado_final', 'Aprobado')
+                    ->pluck('materia_id'),
+            )
+            ->unique();
+
+        return $materiasCuarto->diff($materiasAprobadas)->isEmpty();
+    }
+
     public function nombreCompleto(): string
     {
         $parts = array_filter([
@@ -80,5 +110,10 @@ class Estudiante extends Model
         ]);
 
         return trim(implode(' ', $parts));
+    }
+
+    public function getSemestreNombreAttribute(): string
+    {
+        return Materia::nombreSemestre($this->semestre) ?? (string) $this->semestre;
     }
 }

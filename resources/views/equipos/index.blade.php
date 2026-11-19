@@ -1,4 +1,5 @@
 <x-admin-layout>
+    <x-admin-shell>
     <main class="min-h-screen bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/70">
         <div class="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
             <header class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -74,4 +75,5 @@
             <div>{{ $equipos->links() }}</div>
         </div>
     </main>
+    </x-admin-shell>
 </x-admin-layout>

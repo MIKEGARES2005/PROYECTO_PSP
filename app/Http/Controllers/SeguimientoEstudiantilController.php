@@ -10,6 +10,7 @@ use App\Models\Inscripcion;
 use App\Services\BitacoraService;
 use App\Services\NotificacionService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,6 @@ class SeguimientoEstudiantilController extends Controller
         'observacion',
         'congelamiento',
         'reincorporacion',
-        'retiro',
         'abandono',
     ];
 
@@ -56,6 +56,8 @@ class SeguimientoEstudiantilController extends Controller
             'totalActivos' => Estudiante::query()->where('estado', 'activo')->count(),
             'totalConSeguimiento' => Estudiante::query()->whereHas('historialSeguimiento')->count(),
             'totalPendientes' => Estudiante::query()->where('estado', 'activo')->whereDoesntHave('historialSeguimiento')->count(),
+            'totalCongelados' => Estudiante::query()->where('estado', 'congelado')->count(),
+            'totalEgresados' => Estudiante::query()->where('estado', 'egresado')->count(),
         ]);
     }
 
@@ -90,24 +92,62 @@ class SeguimientoEstudiantilController extends Controller
     {
         $datos = $request->validate([
             'tipo_evento' => ['required', Rule::in(self::EVENTOS)],
-            'descripcion' => ['required_if:tipo_evento,observacion,congelamiento,retiro,abandono', 'nullable', 'string', 'max:1000'],
+            'descripcion' => ['required_if:tipo_evento,observacion,congelamiento,abandono', 'nullable', 'string', 'max:1000'],
             'fecha_evento' => ['required', 'date'],
         ]);
 
         $tipoEvento = $datos['tipo_evento'];
 
-        if ($tipoEvento === 'reincorporacion' && $estudiante->estado !== 'congelado') {
-            throw ValidationException::withMessages([
-                'tipo_evento' => 'La reincorporación solo aplica a estudiantes congelados.',
-            ]);
-        }
-
-        if ($tipoEvento === 'retiro') {
-            $this->validarRetiro($estudiante);
-        }
-
-        DB::transaction(function () use ($datos, $estudiante, $tipoEvento, $request): void {
+        DB::transaction(function () use ($datos, &$estudiante, $tipoEvento, $request): void {
+            $gestion = Gestion::query()->where('activa', true)->lockForUpdate()->first();
             $gestionVigente = ConfiguracionAcademica::gestionVigente();
+
+            if ($gestion !== null
+                && ConfiguracionAcademica::normalizarCodigo((string) $gestionVigente) !== $gestion->codigo) {
+                throw ValidationException::withMessages([
+                    'tipo_evento' => 'La gestión académica no está sincronizada. Actualiza la página o contacta con administración.',
+                ]);
+            }
+
+            $estudiante = Estudiante::query()
+                ->lockForUpdate()
+                ->findOrFail($estudiante->id);
+
+            if ($tipoEvento === 'congelamiento' && $estudiante->estado !== 'activo') {
+                throw ValidationException::withMessages([
+                    'tipo_evento' => 'Solo se puede congelar a un estudiante activo.',
+                ]);
+            }
+
+            if ($tipoEvento === 'congelamiento'
+                && $gestion !== null
+                && $this->existenInscripcionesEnGestion($gestion, $estudiante->id)) {
+                throw ValidationException::withMessages([
+                    'tipo_evento' => 'No se puede congelar al estudiante mientras tenga inscripciones en la gestión vigente. Primero debe terminarse y cerrarse el periodo.',
+                ]);
+            }
+
+            if ($tipoEvento === 'reincorporacion') {
+                if ($estudiante->estado !== 'congelado') {
+                    throw ValidationException::withMessages([
+                        'tipo_evento' => 'La reincorporación solo aplica a estudiantes congelados.',
+                    ]);
+                }
+
+                if ($gestion === null
+                    || ConfiguracionAcademica::normalizarCodigo((string) $gestionVigente) !== $gestion->codigo) {
+                    throw ValidationException::withMessages([
+                        'tipo_evento' => 'La reincorporación solo se permite al inicio de una gestión activa, antes de generar inscripciones.',
+                    ]);
+                }
+
+                if ($this->existenInscripcionesEnGestion($gestion)) {
+                    throw ValidationException::withMessages([
+                        'tipo_evento' => 'La gestión ya tiene inscripciones generadas. La reincorporación deberá registrarse al inicio de la siguiente gestión.',
+                    ]);
+                }
+            }
+
             $gestionId = Gestion::query()->where('codigo', $gestionVigente)->value('id');
 
             HistorialSeguimientoEstudiante::create([
@@ -131,7 +171,7 @@ class SeguimientoEstudiantilController extends Controller
                 $estudiante->users()->update(['activo' => true]);
             }
 
-            if (in_array($tipoEvento, ['retiro', 'abandono'], true)) {
+            if ($tipoEvento === 'abandono') {
                 $estudiante->update(['estado' => 'retirado']);
                 $estudiante->users()->get()->each->delete();
                 $estudiante->delete();
@@ -164,23 +204,17 @@ class SeguimientoEstudiantilController extends Controller
             ->with('success', "Evento de seguimiento registrado para {$estudiante->nombreCompleto()}.");
     }
 
-    private function validarRetiro(Estudiante $estudiante): void
+    private function existenInscripcionesEnGestion(Gestion $gestion, ?int $estudianteId = null): bool
     {
-        if (! in_array((string) $estudiante->semestre, ['4', 'Cuarto', 'cuarto'], true)) {
-            throw ValidationException::withMessages([
-                'tipo_evento' => 'El retiro solo procede cuando el estudiante está en cuarto semestre.',
-            ]);
-        }
-
-        $inscripcionesCuarto = Inscripcion::query()
-            ->where('estudiante_id', $estudiante->id)
-            ->whereHas('materia', fn ($query) => $query->whereIn('semestre', ['4', 'Cuarto', 'cuarto']))
-            ->get(['estado']);
-
-        if ($inscripcionesCuarto->isEmpty() || $inscripcionesCuarto->contains(fn ($inscripcion) => $inscripcion->estado !== 'Aprobado')) {
-            throw ValidationException::withMessages([
-                'tipo_evento' => 'No cumple los requisitos: debe estar en cuarto semestre y tener todas sus materias aprobadas.',
-            ]);
-        }
+        return Inscripcion::query()
+            ->when($estudianteId !== null, fn (Builder $query) => $query->where('estudiante_id', $estudianteId))
+            ->where(function (Builder $query) use ($gestion): void {
+                $query->where('gestion_id', $gestion->id)
+                    ->orWhere(function (Builder $legacyQuery) use ($gestion): void {
+                        $legacyQuery->whereNull('gestion_id')
+                            ->where('gestion', $gestion->codigo);
+                    });
+            })
+            ->exists();
     }
 }

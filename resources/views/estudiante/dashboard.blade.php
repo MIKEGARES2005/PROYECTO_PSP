@@ -9,7 +9,7 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet">
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-screen bg-slate-50 font-sans antialiased">
+    <body class="min-h-screen bg-slate-50 font-sans antialiased" data-authenticated-portal="student">
         @php
             $estado = $estudiante?->estado ?? 'sin perfil';
             $estadoClases = match ($estado) {
@@ -25,9 +25,16 @@
             $notificacionesIniciales = collect($notificaciones ?? [])->map(fn ($notificacion): array => [
                 'id' => $notificacion->id,
                 'titulo' => $notificacion->titulo,
-                'resumen' => $notificacion->tipo === 'solicitud_registro'
-                    ? (str_contains(mb_strtolower($notificacion->titulo), 'acept') ? 'Solicitud aceptada' : 'Solicitud de registro')
-                    : (str_contains(mb_strtolower($notificacion->tipo.' '.$notificacion->titulo), 'asign') ? 'Asignación aceptada' : 'Aviso del sistema'),
+                'resumen' => match ($notificacion->tipo) {
+                    'recuperacion_aprobada' => 'Recuperación aprobada',
+                    'solicitud_aprobada' => 'Solicitud aceptada',
+                    'solicitud_registro' => str_contains(mb_strtolower($notificacion->titulo), 'acept')
+                        ? 'Solicitud aceptada'
+                        : 'Solicitud de registro',
+                    default => str_contains(mb_strtolower($notificacion->tipo.' '.$notificacion->titulo), 'asign')
+                        ? 'Asignación aceptada'
+                        : 'Aviso del sistema',
+                },
                 'mensaje' => $notificacion->mensaje,
                 'url' => in_array($notificacion->tipo, ['sistema', 'solicitud_aprobada'], true) || $notificacion->url === null
                     ? route('estudiante.notifications.details')
@@ -44,10 +51,19 @@
                         <h2 id="bienvenida-estudiante" class="mt-2 text-2xl font-extrabold">¡Bienvenido al portal estudiantil!</h2>
                     </div>
                     <div class="space-y-4 px-6 py-6 text-sm leading-6 text-slate-600 sm:px-8">
-                        <p>Tu solicitud fue aprobada y tu perfil ya está habilitado. Desde <strong>Mi perfil</strong> podrás configurar tus datos personales, nombre de usuario y contraseña.</p>
-                        <p>También podrás registrar y actualizar tus preguntas de seguridad para recuperar tu cuenta cuando lo necesites.</p>
+                        @if (session('student_recovery_welcome'))
+                            <p>Tu cuenta fue recuperada. Desde <strong>Mi perfil</strong> puedes actualizar tu nombre de usuario y contraseña temporales.</p>
+                            <p>Tus preguntas de seguridad se conservan; no necesitas registrarlas de nuevo.</p>
+                        @else
+                            <p>Tu cuenta ya está habilitada. Desde <strong>Mi perfil</strong> podrás configurar tus datos personales, nombre de usuario y contraseña.</p>
+                            <p>También podrás registrar y actualizar tus preguntas de seguridad para recuperar tu cuenta cuando lo necesites.</p>
+                        @endif
                         <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
-                            <strong>Importante:</strong> cambia inmediatamente tus credenciales temporales y completa tus preguntas de seguridad.
+                            @if (session('student_recovery_welcome'))
+                                <strong>Importante:</strong> actualiza tus credenciales temporales; tus preguntas y respuestas guardadas permanecerán intactas.
+                            @else
+                                <strong>Importante:</strong> cambia inmediatamente tus credenciales temporales y completa tus preguntas de seguridad.
+                            @endif
                         </div>
                         <button type="button" @click="abierto = false" class="inline-flex w-full items-center justify-center rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-emerald-800">Cerrar</button>
                     </div>
@@ -175,7 +191,7 @@
                             </a>
                         </div>
                     </div>
-                    <form method="POST" action="{{ route('estudiante.logout') }}" class="shrink-0">
+                    <form method="POST" action="{{ route('estudiante.logout') }}" class="shrink-0" data-logout-form="student">
                         @csrf
                         <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-rose-600 bg-rose-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:border-rose-700 hover:bg-rose-700 sm:px-4">
                             Cerrar sesión
@@ -211,11 +227,111 @@
                 </div>
             </section>
 
+            @if ($gestionVigente === null)
+                <div role="status" class="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm leading-6 text-sky-900">
+                    El sistema está en espera: administración aún no ha iniciado el periodo académico. No se pueden enviar nuevas solicitudes de equipo.
+                </div>
+            @else
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-900">
+                    Gestión académica vigente: {{ $gestionVigente }}
+                </div>
+            @endif
+
             @if ($estudiante === null)
                 <div role="alert" class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
                     Tu cuenta todavía no tiene un perfil de estudiante asociado. Contacta a administración para completar tu registro.
                 </div>
             @endif
+
+            <section aria-label="Estado de mis equipos" class="space-y-4">
+                <div class="grid gap-4 sm:grid-cols-3">
+                    <article class="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
+                        <p class="text-sm font-semibold text-slate-500">Mis asignaciones activas</p>
+                        <p class="mt-2 text-3xl font-black text-emerald-700">{{ $asignacionesActivas }}</p>
+                    </article>
+                    <article class="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
+                        <p class="text-sm font-semibold text-slate-500">Equipos conectados</p>
+                        <p class="mt-2 text-3xl font-black text-teal-700">{{ $equiposConectados }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Reporte recibido en los últimos {{ \App\Models\Heartbeat::ONLINE_TIMEOUT_MINUTES }} minutos.</p>
+                    </article>
+                    <article class="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
+                        <p class="text-sm font-semibold text-slate-500">Incidencias pendientes</p>
+                        <p class="mt-2 text-3xl font-black text-amber-700">{{ $incidenciasPendientes }}</p>
+                    </article>
+                </div>
+
+                <div class="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm sm:p-6">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-lg font-black text-slate-800">Mis equipos y estado de la app</h2>
+                            <p class="mt-1 text-sm text-slate-500">Solo se muestran equipos asignados a tu cuenta.</p>
+                        </div>
+                        <a href="{{ route('estudiante.loans.index') }}" class="rounded-xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100">Ver mis asignaciones</a>
+                    </div>
+
+                    <div class="mt-4 space-y-3">
+                        @forelse ($equiposAsignados as $asignacion)
+                            @php
+                                $equipo = $asignacion->equipo;
+                                $heartbeat = $equipo?->ultimoHeartbeat;
+                                $ultimaLectura = $heartbeat?->fecha_hora;
+                                $conectado = $ultimaLectura !== null
+                                    && $ultimaLectura->between(now()->subMinutes(\App\Models\Heartbeat::ONLINE_TIMEOUT_MINUTES), now());
+                                $diagnosticosRecientes = $heartbeat?->diagnosticos ?? collect();
+                            @endphp
+                            <article class="rounded-xl border border-slate-200 p-4">
+                                <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                                    <div class="min-w-0">
+                                        <p class="font-bold text-slate-900">{{ $equipo?->activo?->nombre ?: 'Equipo asignado' }}</p>
+                                        <p class="mt-1 text-sm text-slate-600">{{ $equipo?->activo?->codigo ?: $equipo?->identificador }} · {{ $asignacion->horario?->materia?->nombre ?: 'Sin materia asociada' }}</p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 text-xs font-bold">
+                                        <span class="rounded-full px-3 py-1 {{ $conectado ? 'bg-emerald-100 text-emerald-800' : ($heartbeat ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700') }}">{{ $conectado ? 'App conectada' : ($heartbeat ? 'App sin conexión' : 'Sin reportes') }}</span>
+                                        <span class="rounded-full px-3 py-1 {{ $equipo?->token_hash ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-700' }}">{{ $equipo?->token_hash ? 'App vinculada' : 'App no vinculada' }}</span>
+                                    </div>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500">
+                                    <span>Último reporte: {{ $ultimaLectura?->format('d/m/Y H:i:s') ?? 'Sin datos registrados' }}</span>
+                                    @if ($heartbeat?->cpu_uso !== null)
+                                        <span>CPU: {{ number_format((float) $heartbeat->cpu_uso, 1) }}%</span>
+                                    @endif
+                                    @if ($heartbeat?->ram_uso !== null)
+                                        <span>RAM: {{ number_format((float) $heartbeat->ram_uso, 1) }}%</span>
+                                    @endif
+                                    @if ($heartbeat?->bateria !== null)
+                                        <span>Batería: {{ number_format((float) $heartbeat->bateria, 1) }}%</span>
+                                    @endif
+                                    <span>Incidencias pendientes: {{ $asignacion->incidencias_pendientes_count }}</span>
+                                </div>
+                                @if ($diagnosticosRecientes->isNotEmpty())
+                                    <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                        <p class="text-xs font-bold text-amber-900">Avisos de la última revisión automática</p>
+                                        <ul class="mt-2 space-y-1 text-xs text-amber-800">
+                                            @foreach ($diagnosticosRecientes->take(2) as $diagnostico)
+                                                <li>{{ $diagnostico->descripcion }}</li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                @elseif ($heartbeat !== null)
+                                    <p class="mt-3 text-xs font-semibold text-emerald-700">Sin alertas en la última revisión automática.</p>
+                                @endif
+                                @if ($asignacion->incidencias->isNotEmpty())
+                                    <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                        <p class="text-xs font-bold text-rose-900">Incidencias abiertas</p>
+                                        <ul class="mt-2 space-y-1 text-xs text-rose-800">
+                                            @foreach ($asignacion->incidencias->take(2) as $incidencia)
+                                                <li>{{ $incidencia->descripcion }}</li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                @endif
+                            </article>
+                        @empty
+                            <p class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Todavía no tienes equipos asignados.</p>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
 
             @if (false && ($notificaciones ?? collect())->isNotEmpty())
                 <section class="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-6">
@@ -237,7 +353,7 @@
                 </section>
             @endif
 
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <a href="{{ route('estudiante.profile.edit') }}" class="hidden">
                     <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-lg text-emerald-700" aria-hidden="true">♙</span>
                     <h2 class="mt-4 font-bold text-slate-800">Mi perfil</h2>
@@ -252,20 +368,50 @@
                     <span class="mt-3 inline-block text-xs font-semibold text-emerald-700 group-hover:underline">Configurar</span>
                 </a>
 
-                <div class="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5">
+                <div class="hidden rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5">
                     <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-lg text-slate-500" aria-hidden="true">▣</span>
                     <h2 class="mt-4 font-bold text-slate-700">Solicitar equipo</h2>
                     <p class="mt-1 text-sm leading-6 text-slate-500">Pide un equipo para tus prácticas de laboratorio.</p>
                     <span class="mt-3 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Próximamente</span>
                 </div>
 
-                <div class="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5">
+                <div class="hidden rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5">
                     <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-lg text-slate-500" aria-hidden="true">▤</span>
                     <h2 class="mt-4 font-bold text-slate-700">Mis préstamos</h2>
                     <p class="mt-1 text-sm leading-6 text-slate-500">Consulta tus equipos asignados y sus devoluciones.</p>
                     <span class="mt-3 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Próximamente</span>
                 </div>
             </div>
+
+            <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @if ($gestionVigente !== null)
+                    <a href="{{ route('estudiante.equipment.create') }}" class="group rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-lg text-emerald-700" aria-hidden="true">+</span>
+                        <h2 class="mt-4 font-bold text-slate-800">Solicitar equipo</h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-500">Envía una solicitud de equipo para tus prácticas.</p>
+                        <span class="mt-3 inline-block text-xs font-semibold text-emerald-700 group-hover:underline">Abrir solicitud</span>
+                    </a>
+                @else
+                    <div aria-disabled="true" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-200 text-lg text-slate-500" aria-hidden="true">+</span>
+                        <h2 class="mt-4 font-bold text-slate-700">Solicitar equipo</h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-500">Disponible cuando administración inicie la siguiente gestión.</p>
+                        <span class="mt-3 inline-block text-xs font-semibold text-slate-500">Periodo en espera</span>
+                    </div>
+                @endif
+                <a href="{{ route('estudiante.loans.index') }}" class="group rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+                    <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-100 text-lg text-teal-700" aria-hidden="true">#</span>
+                    <h2 class="mt-4 font-bold text-slate-800">Mis préstamos</h2>
+                    <p class="mt-1 text-sm leading-6 text-slate-500">Consulta equipos, devoluciones y reportes.</p>
+                    <span class="mt-3 inline-block text-xs font-semibold text-emerald-700 group-hover:underline">Ver mis préstamos</span>
+                </a>
+                <a href="{{ route('estudiante.followup.index') }}" class="group rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+                    <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-100 text-lg text-cyan-700" aria-hidden="true">*</span>
+                    <h2 class="mt-4 font-bold text-slate-800">Mi seguimiento estudiantil</h2>
+                    <p class="mt-1 text-sm leading-6 text-slate-500">Consulta materias, calificaciones y horarios.</p>
+                    <span class="mt-3 inline-block text-xs font-semibold text-emerald-700 group-hover:underline">Ver seguimiento</span>
+                </a>
+            </section>
 
             <section class="grid gap-6">
                 <aside class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm sm:p-7">

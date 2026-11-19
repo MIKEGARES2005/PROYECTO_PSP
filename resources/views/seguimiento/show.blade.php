@@ -38,8 +38,13 @@
                         <h2 class="mt-2 text-2xl font-black">{{ $estudiante->nombreCompleto() }}</h2>
                         <p class="mt-1 text-sm text-indigo-100">CI {{ $estudiante->ci }} · {{ $estudiante->matricula ?: 'Sin matrícula' }}</p>
                     </div>
-                    <span class="inline-flex w-fit rounded-full bg-white/15 px-4 py-2 text-sm font-black ring-1 ring-white/20">Estado: {{ ucfirst($estudiante->estado) }}</span>
+                    <span class="inline-flex w-fit rounded-full bg-white/15 px-4 py-2 text-sm font-black ring-1 ring-white/20">Estado: {{ $estudiante->estado === 'egresado' ? 'Egresado · carrera concluida' : ucfirst($estudiante->estado) }}</span>
                 </div>
+                @if ($estudiante->estado === 'congelado')
+                    <p class="mt-4 rounded-xl bg-amber-100/15 px-4 py-3 text-sm font-semibold text-amber-50 ring-1 ring-amber-100/20">Carrera congelada: su progreso y nuevas inscripciones están pausados hasta que administración registre la reincorporación al inicio de una gestión.</p>
+                @elseif ($estudiante->estado === 'egresado')
+                    <p class="mt-4 rounded-xl bg-emerald-100/15 px-4 py-3 text-sm font-semibold text-emerald-50 ring-1 ring-emerald-100/20">Concluyó exitosamente todas las materias de cuarto semestre. Su ficha y su historial se conservan; el acceso al portal está desactivado.</p>
+                @endif
                 <div class="mt-6 grid gap-3 sm:grid-cols-4">
                     @foreach ([['label' => 'Semestre', 'value' => $estudiante->semestre], ['label' => 'Gestión consultada', 'value' => $gestionVigente], ['label' => 'Correo institucional', 'value' => $estudiante->correo_institucional ?: 'No registrado'], ['label' => 'Cuenta', 'value' => $estudiante->user?->activo ? 'Activa' : 'Inactiva']] as $dato)
                         <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
@@ -102,9 +107,8 @@
                             <label for="tipo_evento" class="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Evento</label>
                             <select id="tipo_evento" name="tipo_evento" x-model="tipoEvento" required class="w-full rounded-xl border-slate-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                 <option value="observacion">Observación</option>
-                                <option value="congelamiento">Congelamiento</option>
+                                <option value="congelamiento">Congelación</option>
                                 <option value="reincorporacion">Reincorporación</option>
-                                <option value="retiro">Retiro</option>
                                 <option value="abandono">Abandono</option>
                             </select>
                         </div>

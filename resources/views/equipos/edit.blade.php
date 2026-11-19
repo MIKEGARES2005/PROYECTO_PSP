@@ -1,4 +1,5 @@
 <x-admin-layout>
+    <x-admin-shell>
     <main class="min-h-screen bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/70 px-4 py-8 sm:px-6 lg:px-8">
         <div class="mx-auto max-w-3xl">
             <a href="{{ route('equipos.show', $equipo->id) }}" class="text-sm font-semibold text-[#4959A6] hover:underline">← Volver al detalle</a>
@@ -23,4 +24,5 @@
             </form>
         </div>
     </main>
+    </x-admin-shell>
 </x-admin-layout>

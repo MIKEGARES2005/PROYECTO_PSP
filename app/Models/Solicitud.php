@@ -31,6 +31,7 @@ class Solicitud extends Model
     protected function casts(): array
     {
         return [
+            'fecha_uso' => 'date',
             'fecha_decision' => 'datetime',
         ];
     }

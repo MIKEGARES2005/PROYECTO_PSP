@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Heartbeat extends Model
 {
@@ -17,6 +18,7 @@ class Heartbeat extends Model
     protected $table = 'heartbeats';
 
     protected $fillable = [
+        'uuid',
         'equipo_id',
         'cpu_uso',
         'ram_uso',
@@ -41,5 +43,10 @@ class Heartbeat extends Model
     public function equipo(): BelongsTo
     {
         return $this->belongsTo(Equipo::class);
+    }
+
+    public function diagnosticos(): HasMany
+    {
+        return $this->hasMany(Diagnostico::class);
     }
 }

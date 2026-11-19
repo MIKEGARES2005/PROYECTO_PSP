@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invitado;
+use App\Rules\CarnetIdentidad;
+use App\Rules\NombreCompleto;
+use App\Rules\TelefonoBoliviano;
 use App\Services\BitacoraService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -119,18 +122,18 @@ class InvitadoController extends Controller
     {
         return [
             'tipo' => ['required', Rule::in(['estudiante', 'docente', 'externo'])],
-            'nombres' => ['required', 'string', 'max:100'],
-            'apellido_paterno' => ['required', 'string', 'max:100'],
-            'apellido_materno' => ['nullable', 'string', 'max:100'],
+            'nombres' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_paterno' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_materno' => ['nullable', 'string', 'max:100', new NombreCompleto],
             'ci' => [
                 'required',
                 'string',
-                'max:20',
+                new CarnetIdentidad,
                 Rule::unique('invitados', 'ci')->ignore($invitado?->id),
             ],
             'ci_extension' => ['nullable', 'string', 'max:2'],
-            'telefono' => ['nullable', 'string', 'max:20'],
-            'semestre' => ['nullable', 'integer', 'between:1,4'],
+            'telefono' => ['nullable', 'string', new TelefonoBoliviano],
+            'semestre' => ['nullable', 'integer', 'between:1,6'],
             'procedencia' => ['nullable', 'string', 'max:150'],
             'estado' => ['required', Rule::in(['activo', 'inactivo'])],
         ];

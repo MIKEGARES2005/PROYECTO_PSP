@@ -4,8 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Docente;
 use App\Models\Estudiante;
+use App\Models\ReporteGenerado;
 use App\Models\User;
+use App\Rules\CarnetIdentidad;
+use App\Rules\NombreCompleto;
+use App\Rules\TelefonoBoliviano;
 use App\Services\BitacoraService;
+use App\Services\NotificacionService;
+use App\Services\UserAnonymizationService;
+use App\Support\DireccionEstudiante;
+use App\Support\NormalizadorCredencial;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +28,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
 class UserController extends Controller
@@ -77,8 +86,9 @@ class UserController extends Controller
             $usuarios = $consulta
                 ->leftJoin('estudiantes', 'users.estudiante_id', '=', 'estudiantes.id')
                 ->select('users.*')
-                ->orderBy('estudiantes.semestre', 'asc')
-                ->orderBy('users.created_at', 'desc')
+                ->orderByRaw('LOWER(estudiantes.apellido_paterno) ASC')
+                ->orderByRaw('LOWER(estudiantes.apellido_materno) ASC')
+                ->orderByRaw('LOWER(estudiantes.nombres) ASC')
                 ->orderBy('users.id', 'desc')
                 ->paginate(10)
                 ->withQueryString();
@@ -111,6 +121,7 @@ class UserController extends Controller
     public function deleted(): View
     {
         $usuarios = User::onlyTrashed()
+            ->whereNull('anonymized_at')
             ->with([
                 'docente' => fn ($query) => $query->withTrashed(),
                 'estudiante' => fn ($query) => $query->withTrashed(),
@@ -118,7 +129,42 @@ class UserController extends Controller
             ->latest('deleted_at')
             ->paginate(10);
 
-        return view('usuarios.deleted', compact('usuarios'));
+        $discoPublico = Storage::disk('public');
+        $directorioPdf = 'reportes/usuarios-eliminados';
+        $archivosPdf = collect(
+            $discoPublico->directoryExists($directorioPdf)
+                ? $discoPublico->files($directorioPdf)
+                : [],
+        )
+            ->filter(fn (string $ruta): bool => Str::endsWith(Str::lower($ruta), '.pdf'))
+            ->sortDesc()
+            ->map(fn (string $ruta): array => [
+                'nombre' => basename($ruta),
+                'url' => route('usuarios.deleted.pdf', ['filename' => basename($ruta)]),
+            ])
+            ->values();
+        $rutaDirectorioPdf = $discoPublico->path($directorioPdf);
+
+        return view('usuarios.deleted', compact('usuarios', 'archivosPdf', 'directorioPdf', 'rutaDirectorioPdf'));
+    }
+
+    /** Mostrar un PDF de respaldo de perfil eliminado. */
+    public function deletedPdf(string $filename): BinaryFileResponse
+    {
+        abort_unless(
+            $filename === basename($filename)
+                && Str::endsWith(Str::lower($filename), '.pdf'),
+            404,
+        );
+
+        $rutaReporte = 'reportes/usuarios-eliminados/'.$filename;
+        $discoPublico = Storage::disk('public');
+
+        abort_unless($discoPublico->exists($rutaReporte), 404);
+
+        return response()->file($discoPublico->path($rutaReporte), [
+            'Content-Type' => 'application/pdf',
+        ]);
     }
 
     /** Crear una cuenta. */
@@ -136,20 +182,20 @@ class UserController extends Controller
             'tipo_usuario' => ['required', Rule::in(['administrador', 'docente', 'estudiante'])],
             'username' => ['required', 'string', 'max:50', 'alpha_dash', 'unique:users,username'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'perfil.nombres' => ['required', 'string', 'max:100'],
-            'perfil.apellido_paterno' => ['required', 'string', 'max:100'],
-            'perfil.apellido_materno' => ['required', 'string', 'max:100'],
+            'perfil.nombres' => ['required', 'string', 'max:100', new NombreCompleto],
+            'perfil.apellido_paterno' => ['required', 'string', 'max:100', new NombreCompleto],
+            'perfil.apellido_materno' => ['required', 'string', 'max:100', new NombreCompleto],
             'perfil.ci' => [
                 'required',
                 'string',
-                'max:20',
+                new CarnetIdentidad,
                 Rule::unique($tablaPerfil, 'ci'),
             ],
             'perfil.ci_extension' => [
                 'required',
                 Rule::in(['LP', 'OR', 'PT', 'CB', 'SC', 'TJ', 'CH', 'BE', 'PD']),
             ],
-            'perfil.telefono' => ['nullable', 'string', 'max:20'],
+            'perfil.telefono' => ['nullable', 'string', new TelefonoBoliviano],
             'perfil.cargo' => [
                 Rule::requiredIf($esDocente),
                 'nullable',
@@ -172,6 +218,15 @@ class UserController extends Controller
             'perfil.correo_institucional' => ['nullable', 'email', 'max:150'],
             'perfil.correo_personal' => ['nullable', 'email', 'max:150'],
             'perfil.direccion' => ['nullable', 'string', 'max:255'],
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'direccion_zona' => ['nullable', 'string', 'max:80'],
+            'direccion_tipo_via' => [
+                Rule::requiredIf(filled($request->input('direccion_via'))),
+                'nullable',
+                Rule::in(['Av.', 'C.']),
+            ],
+            'direccion_via' => ['nullable', 'string', 'max:120'],
+            'direccion_numero_puerta' => ['nullable', 'string', 'max:20'],
             'foto_personal' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ]);
 
@@ -203,6 +258,13 @@ class UserController extends Controller
                 'nivel_academico',
                 'fecha_ingreso',
             ]);
+
+        if ($esEstudiante) {
+            $perfilDatos['direccion'] = DireccionEstudiante::desdeDatos(
+                $datos,
+                $datos['direccion'] ?? $datos['perfil']['direccion'] ?? null,
+            );
+        }
 
         if (! $esEstudiante && ! $esDocente) {
             $perfilDatos['cargo'] = 'Administrador';
@@ -270,14 +332,35 @@ class UserController extends Controller
         return view('usuarios.show', compact('usuario'));
     }
 
+    /** Entregar la fotografía personal de una cuenta al panel administrativo. */
+    public function photo(string $id): BinaryFileResponse
+    {
+        $usuario = User::with(['docente', 'estudiante'])->findOrFail($id);
+        $perfil = $usuario->tipo_usuario === 'estudiante'
+            ? $usuario->estudiante
+            : $usuario->docente;
+        $rutaFoto = $perfil?->foto_personal;
+
+        abort_unless($rutaFoto !== null && Storage::disk('public')->exists($rutaFoto), 404);
+
+        return response()->file(Storage::disk('public')->path($rutaFoto), [
+            'Cache-Control' => 'private, max-age=300',
+        ]);
+    }
+
     /** Exportar la ficha de una cuenta como plantilla PDF. */
     public function exportPdf(string $id): Response
     {
         $usuario = User::with(['docente', 'estudiante'])->findOrFail($id);
-        $nombreArchivo = 'usuario-'.$usuario->username.'-plantilla.pdf';
+        $nombreArchivo = preg_replace(
+            '/\s+/u',
+            ' ',
+            trim((string) preg_replace('/[^\pL\pN\s-]/u', '', $usuario->nombreCompleto()))
+        );
+        $nombreArchivo = ($nombreArchivo !== '' ? $nombreArchivo : 'usuario-'.$usuario->id).'.pdf';
 
         return Pdf::loadView('usuarios.pdf', compact('usuario'))
-            ->setPaper('a4')
+            ->setPaper('letter', 'portrait')
             ->download($nombreArchivo);
     }
 
@@ -306,13 +389,13 @@ class UserController extends Controller
         abort_if($perfil === null, 404);
 
         $reglas = [
-            'nombres' => ['required', 'string', 'max:100'],
-            'apellido_paterno' => ['required', 'string', 'max:100'],
-            'apellido_materno' => ['required', 'string', 'max:100'],
+            'nombres' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_paterno' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_materno' => ['required', 'string', 'max:100', new NombreCompleto],
             'ci' => [
                 'required',
                 'string',
-                'max:20',
+                new CarnetIdentidad,
                 Rule::unique($esEstudiante ? 'estudiantes' : 'docentes', 'ci')
                     ->ignore($perfil->id),
             ],
@@ -320,7 +403,7 @@ class UserController extends Controller
                 'required',
                 Rule::in(['LP', 'OR', 'PT', 'CB', 'SC', 'TJ', 'CH', 'BE', 'PD']),
             ],
-            'telefono' => ['nullable', 'string', 'max:20'],
+            'telefono' => ['nullable', 'string', new TelefonoBoliviano],
             'correo_personal' => ['nullable', 'email', 'max:150'],
             'foto_personal' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
@@ -337,6 +420,14 @@ class UserController extends Controller
                 'generacion_ingreso' => ['required', 'string', 'regex:/^(?:I|II)-\d{4}$/'],
                 'correo_institucional' => ['nullable', 'email', 'max:150'],
                 'direccion' => ['nullable', 'string', 'max:255'],
+                'direccion_zona' => ['nullable', 'string', 'max:80'],
+                'direccion_tipo_via' => [
+                    Rule::requiredIf(filled($request->input('direccion_via'))),
+                    'nullable',
+                    Rule::in(['Av.', 'C.']),
+                ],
+                'direccion_via' => ['nullable', 'string', 'max:120'],
+                'direccion_numero_puerta' => ['nullable', 'string', 'max:20'],
             ];
         } else {
             $reglas += [
@@ -349,6 +440,16 @@ class UserController extends Controller
 
         $datos = $request->validate($reglas);
         $datosPerfil = Arr::only($datos, array_keys($reglas));
+
+        if ($esEstudiante) {
+            $datosPerfil = Arr::except($datosPerfil, [
+                'direccion_zona',
+                'direccion_tipo_via',
+                'direccion_via',
+                'direccion_numero_puerta',
+            ]);
+            $datosPerfil['direccion'] = DireccionEstudiante::desdeDatos($datos, $datos['direccion'] ?? null);
+        }
 
         $foto = $request->file('foto_personal');
         $rutaFoto = $foto?->store(
@@ -419,6 +520,13 @@ class UserController extends Controller
         $estadoAnterior = $perfil->estado;
         $perfil->update(['estado' => $datos['estado']]);
 
+        if (
+            $datos['estado'] === 'inactivo'
+            && in_array($usuario->tipo_usuario, ['docente', 'estudiante'], true)
+        ) {
+            $this->invalidateAccountSessions($usuario);
+        }
+
         BitacoraService::registrar(
             'cambiar_estado_usuario',
             'users',
@@ -447,31 +555,123 @@ class UserController extends Controller
             default => null,
         };
 
-        abort_if($perfil === null, 404);
-
         $categoria = $usuario->tipo_usuario;
-        $nombreCompleto = $usuario->nombreCompleto();
         $antes = [
             'username' => $usuario->username,
             'tipo_usuario' => $usuario->tipo_usuario,
-            'perfil_id' => $perfil->id,
+            'perfil_id' => $perfil?->id,
         ];
+        $rutaReporte = 'reportes/usuarios-eliminados/usuario-'.$usuario->id.'-'.now()->format('YmdHis').'.pdf';
 
-        DB::transaction(function () use ($perfil, $usuario, $antes): void {
-            $perfil->delete();
-            $usuario->delete();
+        if (! Storage::disk('public')->put(
+            $rutaReporte,
+            Pdf::loadView('usuarios.pdf', compact('usuario'))->setPaper('letter', 'portrait')->output(),
+        )) {
+            throw new \RuntimeException('No se pudo guardar el respaldo PDF del usuario eliminado.');
+        }
+
+        try {
+            DB::transaction(function () use ($perfil, $usuario, $antes, $rutaReporte): void {
+                ReporteGenerado::create([
+                    'tipo' => 'otro',
+                    'parametros' => [
+                        'tipo' => 'eliminacion_usuario',
+                        'usuario_id' => $usuario->id,
+                        'username' => $usuario->username,
+                    ],
+                    'generado_por' => Auth::id(),
+                    'ruta' => $rutaReporte,
+                    'vence_en' => null,
+                ]);
+
+                $usuario->setRememberToken(null);
+                $usuario->save();
+                $this->invalidateAccountSessions($usuario);
+
+                if ($perfil !== null) {
+                    $perfil->delete();
+                }
+
+                $usuario->delete();
+
+                BitacoraService::registrar(
+                    'eliminar_perfil_usuario',
+                    'users',
+                    $usuario->id,
+                    $antes,
+                    ['deleted_at' => now()->toDateTimeString(), 'respaldo_pdf' => $rutaReporte]
+                );
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('public')->delete($rutaReporte);
+
+            throw $exception;
+        }
+
+        return redirect()->route('usuarios.index', ['categoria' => $categoria])
+            ->with('success', 'Perfil eliminado correctamente');
+    }
+
+    /** Restaurar una cuenta y su perfil personal archivados. */
+    public function restore(string $id): RedirectResponse
+    {
+        $usuario = User::onlyTrashed()
+            ->with([
+                'docente' => fn ($query) => $query->withTrashed(),
+                'estudiante' => fn ($query) => $query->withTrashed(),
+            ])
+            ->findOrFail($id);
+
+        if ($usuario->anonymized_at !== null) {
+            return redirect()->route('usuarios.deleted')
+                ->withErrors(['usuario' => 'Este perfil ya fue anonimizado y no puede restaurarse.']);
+        }
+
+        $perfil = in_array($usuario->tipo_usuario, ['administrador', 'docente'], true)
+            ? $usuario->docente
+            : ($usuario->tipo_usuario === 'estudiante' ? $usuario->estudiante : null);
+
+        abort_if($perfil !== null && ! $perfil->trashed(), 404);
+
+        $gracePeriodCutoff = now()->subDays((int) config('retention.users.deletion_grace_period_days', 2));
+
+        if ($usuario->deleted_at?->lte($gracePeriodCutoff)) {
+            return redirect()->route('usuarios.deleted')
+                ->withErrors(['usuario' => 'El periodo de restauración de esta cuenta ya expiró.']);
+        }
+
+        DB::transaction(function () use ($perfil, $usuario): void {
+            $perfil?->restore();
+            $usuario->setRememberToken(null);
+            $usuario->restore();
 
             BitacoraService::registrar(
-                'eliminar_perfil_usuario',
+                'restaurar_perfil_usuario',
                 'users',
                 $usuario->id,
-                $antes,
-                ['deleted_at' => now()->toDateTimeString()]
+                ['deleted_at' => $usuario->deleted_at?->toDateTimeString()],
+                ['deleted_at' => null]
             );
         });
 
-        return redirect()->route('usuarios.index', ['categoria' => $categoria])
-            ->with('success', "El perfil de {$nombreCompleto} fue eliminado y archivado correctamente.");
+        return redirect()->route('usuarios.deleted')
+            ->with('success', 'Perfil recuperado correctamente');
+    }
+
+    /** Finalizar anticipadamente la eliminación de un perfil archivado. */
+    public function finalizeDeletion(
+        string $id,
+        Request $request,
+        UserAnonymizationService $anonymization,
+    ): RedirectResponse {
+        $usuario = User::onlyTrashed()
+            ->whereNull('anonymized_at')
+            ->findOrFail($id);
+
+        $anonymization->anonymize($usuario, $request->user());
+
+        return redirect()->route('usuarios.deleted')
+            ->with('success', 'Los datos personales del perfil se anonimizaron; el PDF original se conserva indefinidamente junto con el historial.');
     }
 
     /** Recuperar cuenta: generar credenciales temporales para docentes y estudiantes. */
@@ -501,8 +701,8 @@ class UserController extends Controller
         }
 
         // Generar username temporal único
-        $nombresCompactos = preg_replace('/\s+/', '', trim((string) $perfil->nombres));
-        $baseUsername = Str::slug($nombresCompactos.'_'.$perfil->apellido_paterno, '_');
+        $baseUsername = NormalizadorCredencial::normalizar((string) $perfil->nombres)
+            .'_'.NormalizadorCredencial::normalizar((string) $perfil->apellido_paterno);
         $baseUsername = Str::substr($baseUsername ?: 'usuario', 0, 50);
         $tempUsername = $baseUsername;
         $sufijo = 2;
@@ -512,32 +712,123 @@ class UserController extends Controller
             $tempUsername = Str::substr($baseUsername, 0, 50 - Str::length($colision)).$colision;
         }
 
-        // Generar password temporal (12 chars alfanumérico)
+        // Generar una contraseña temporal a partir del apellido y el CI.
         $ci = preg_replace('/\D+/', '', (string) $perfil->ci) ?: '00000000';
-        $basePassword = Str::slug($perfil->apellido_paterno, '').$ci;
+        $basePassword = NormalizadorCredencial::normalizar((string) $perfil->apellido_paterno).$ci;
 
         $tempPassword = $basePassword ?: Str::random(12);
 
         $antes = $usuario->only(['username', 'debe_cambiar_password']);
 
-        $usuario->forceFill([
-            'username' => $tempUsername,
-            'password' => $tempPassword, // Se aplica cast 'hashed' en el modelo
-            'debe_cambiar_password' => true,
-        ])->save();
+        DB::transaction(function () use ($usuario, $tempUsername, $tempPassword, $antes): void {
+            $usuario->forceFill([
+                'username' => $tempUsername,
+                'password' => $tempPassword, // Se aplica cast 'hashed' en el modelo
+                'debe_cambiar_password' => true,
+                'remember_token' => null,
+            ])->save();
 
-        BitacoraService::registrar(
-            'recuperar_cuenta',
-            'users',
-            $usuario->id,
-            $antes,
-            ['username' => $tempUsername, 'debe_cambiar_password' => true]
-        );
+            $this->invalidateAccountSessions($usuario);
+
+            BitacoraService::registrar(
+                'recuperar_cuenta',
+                'users',
+                $usuario->id,
+                $antes,
+                ['username' => $tempUsername, 'debe_cambiar_password' => true]
+            );
+
+            if (in_array($usuario->tipo_usuario, ['docente', 'estudiante'], true)) {
+                NotificacionService::notificarUsuario(
+                    (int) $usuario->id,
+                    'recuperacion_aprobada',
+                    'Recuperación aprobada',
+                    'Tu cuenta fue recuperada con éxito. Inicia sesión con las credenciales temporales que te proporcionó administración y actualiza tu usuario y contraseña.',
+                    $usuario->tipo_usuario === 'estudiante'
+                        ? route('estudiante.profile.edit')
+                        : route('profile.edit')
+                );
+            }
+        });
+
+        if ($usuario->tipo_usuario === 'estudiante') {
+            foreach ([Auth::guard('student')->getName(), Auth::guard('web')->getName()] as $guardKey) {
+                if ((string) $request->session()->get($guardKey) === (string) $usuario->id) {
+                    $request->session()->forget($guardKey);
+                }
+            }
+        }
 
         return response()->json([
             'success' => true,
             'username' => $tempUsername,
             'password' => $tempPassword,
         ]);
+    }
+
+    private function invalidateAccountSessions(User $usuario): void
+    {
+        $sessionConnection = DB::connection(config('session.connection'));
+        $sessionTable = config('session.table');
+
+        if ($usuario->tipo_usuario !== 'estudiante') {
+            $sessionConnection->table($sessionTable)
+                ->where('user_id', $usuario->id)
+                ->delete();
+
+            return;
+        }
+
+        $sessionConnection->table($sessionTable)
+            ->where('user_id', $usuario->id)
+            ->delete();
+
+        // Student sessions can share a record with a different guard, so remove only this user's auth keys.
+        $guardKeys = [
+            Auth::guard('student')->getName(),
+            Auth::guard('web')->getName(),
+        ];
+        $activeSince = now()->subMinutes(config('session.lifetime'))->timestamp;
+        $sessions = $sessionConnection->table($sessionTable)
+            ->where('last_activity', '>=', $activeSince)
+            ->get(['id', 'payload']);
+
+        foreach ($sessions as $session) {
+            $serializedData = base64_decode($session->payload, true);
+
+            if ($serializedData === false) {
+                continue;
+            }
+
+            $serialization = config('session.serialization', 'php');
+            $attributes = $serialization === 'json'
+                ? json_decode($serializedData, true)
+                : @unserialize($serializedData);
+
+            if (! is_array($attributes)) {
+                continue;
+            }
+
+            $hasMatchingGuard = false;
+
+            foreach ($guardKeys as $guardKey) {
+                if ((string) ($attributes[$guardKey] ?? '') === (string) $usuario->id) {
+                    unset($attributes[$guardKey]);
+                    $hasMatchingGuard = true;
+                }
+            }
+
+            if (! $hasMatchingGuard) {
+                continue;
+            }
+
+            $updatedData = $serialization === 'json'
+                ? json_encode($attributes, JSON_THROW_ON_ERROR)
+                : serialize($attributes);
+
+            $sessionConnection->table($sessionTable)
+                ->where('id', $session->id)
+                ->update(['payload' => base64_encode($updatedData)]);
+        }
     }
 }

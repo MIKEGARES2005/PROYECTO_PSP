@@ -1,4 +1,15 @@
 import Alpine from 'alpinejs';
+import { capitalizeInitialLetter } from './capitalize-initial-letter';
+import {
+    loadProfilePhotoDraft,
+    profilePhotoDraftKey,
+    restoreProfilePhotoDraft,
+    saveProfilePhotoDraft,
+} from './profile-photo-draft';
+import {
+    buildSuggestedUsername,
+    normalizeSuggestedCredentialPart,
+} from './suggested-credentials';
 
 const toastTimers = new Map();
 
@@ -14,6 +25,11 @@ Alpine.store('toasts', {
         }
 
         const type = payload.type ?? 'info';
+
+        if (this.items.some((toast) => toast.type === type && toast.message === message)) {
+            return;
+        }
+
         const defaultDuration = ['error', 'warning'].includes(type) ? 9000 : 6000;
 
         // Los mensajes largos (por ejemplo, claves temporales) permanecen
@@ -45,8 +61,281 @@ Alpine.store('toasts', {
 });
 
 window.Alpine = Alpine;
+window.buildSuggestedUsername = buildSuggestedUsername;
+window.normalizeSuggestedCredentialPart = normalizeSuggestedCredentialPart;
 
 Alpine.start();
+initializeProfilePhotoDrafts();
+
+const authenticatedPortal = document.body.dataset.authenticatedPortal;
+const loggedOutPortal = getLoggedOutPortal();
+
+if (authenticatedPortal && loggedOutPortal === authenticatedPortal) {
+    try {
+        sessionStorage.removeItem('system-logged-out-portal');
+    } catch (error) {
+        console.error('No se pudo limpiar el estado de cierre de sesión.', error);
+    }
+}
+
+window.addEventListener('pageshow', (event) => {
+    const portal = document.body.dataset.authenticatedPortal
+        || getLoggedOutPortal();
+
+    if (!event.persisted || !portal) {
+        return;
+    }
+
+    document.documentElement.style.visibility = 'hidden';
+
+    if (getLoggedOutPortal() === portal) {
+        window.location.replace(portal === 'student' ? '/estudiante/login' : '/login');
+        return;
+    }
+
+    window.location.reload();
+});
+
+function getLoggedOutPortal() {
+    try {
+        return sessionStorage.getItem('system-logged-out-portal');
+    } catch (error) {
+        console.error('No se pudo consultar el estado de cierre de sesión.', error);
+
+        return null;
+    }
+}
+
+document.addEventListener('submit', async (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement) || !form.dataset.logoutForm) {
+        return;
+    }
+
+    event.preventDefault();
+
+    if (form.dataset.logoutPending === 'true') {
+        return;
+    }
+
+    const portal = form.dataset.logoutForm;
+
+    form.dataset.logoutPending = 'true';
+    form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((button) => {
+        button.disabled = true;
+    });
+
+    try {
+        sessionStorage.setItem('system-logged-out-portal', portal);
+    } catch (error) {
+        console.error('No se pudo guardar el estado de cierre de sesión.', error);
+    }
+
+    try {
+        const response = await fetch(form.action, {
+            method: form.method || 'POST',
+            body: new FormData(form),
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'text/html',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+
+        if (!response.ok || !response.redirected) {
+            throw new Error('El servidor no confirmó el cierre de sesión.');
+        }
+
+        const destination = new URL(response.url, window.location.href);
+
+        if (destination.origin !== window.location.origin) {
+            throw new Error('El cierre de sesión devolvió un destino no permitido.');
+        }
+
+        window.location.replace(destination.href);
+    } catch (error) {
+        console.error('No se pudo completar el cierre de sesión con navegación segura.', error);
+        HTMLFormElement.prototype.submit.call(form);
+    }
+});
+
+document.addEventListener('change', (event) => {
+    const input = event.target;
+
+    if (!(input instanceof HTMLInputElement) || input.name !== 'foto_personal') {
+        return;
+    }
+
+    if (input.dataset.profilePhotoDraftRestored === 'true') {
+        delete input.dataset.profilePhotoDraftRestored;
+
+        return;
+    }
+
+    const form = input.form;
+    const profileKey = form?.dataset.profilePhotoDraftKey;
+
+    if (!profileKey) {
+        return;
+    }
+
+    const key = profilePhotoDraftKey(profileKey);
+    const file = input.files?.[0];
+
+    if (!file) {
+        try {
+            sessionStorage.removeItem(key);
+        } catch (error) {
+            console.error('No se pudo limpiar el borrador de la fotografía del perfil.', error);
+        }
+
+        return;
+    }
+
+    persistProfilePhotoDraft(key, file)
+        .catch((error) => console.error('No se pudo guardar temporalmente la fotografía del perfil.', error));
+});
+
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement) || !form.dataset.profilePhotoDraftKey) {
+        return;
+    }
+
+    if (form.dataset.profilePhotoDraftSubmission === 'ready') {
+        delete form.dataset.profilePhotoDraftSubmission;
+
+        return;
+    }
+
+    const input = form.querySelector('input[type="file"][name="foto_personal"]');
+    const file = input?.files?.[0];
+
+    if (!file) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const continueSubmission = () => {
+        form.dataset.profilePhotoDraftSubmission = 'ready';
+
+        if (event.submitter instanceof HTMLElement) {
+            form.requestSubmit(event.submitter);
+
+            return;
+        }
+
+        form.requestSubmit();
+    };
+
+    persistProfilePhotoDraft(profilePhotoDraftKey(form.dataset.profilePhotoDraftKey), file)
+        .then(continueSubmission).catch((error) => {
+            console.error('No se pudo guardar temporalmente la fotografía del perfil.', error);
+            continueSubmission();
+        });
+});
+
+document.addEventListener('input', (event) => {
+    const input = event.target;
+
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    if (input.hasAttribute('data-capitalize-first')) {
+        capitalizeInitialLetter(input);
+    }
+
+    if (input.hasAttribute('data-email-domain')) {
+        normalizeEmailDomainInput(input);
+    }
+}, true);
+
+document.querySelectorAll('input[data-email-domain]').forEach(normalizeEmailDomainInput);
+
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement)) {
+        return;
+    }
+
+    form.querySelectorAll('input[data-email-domain]').forEach((input) => {
+        const address = input.value.trim();
+        const domain = input.dataset.emailDomain;
+
+        if (address !== '' && domain && !address.includes('@')) {
+            input.value = `${address}@${domain}`;
+        }
+    });
+});
+
+function normalizeEmailDomainInput(input) {
+    const domain = input.dataset.emailDomain;
+
+    if (!domain) {
+        return;
+    }
+
+    const value = input.value.trim();
+    const suffix = `@${domain}`;
+
+    if (value.toLowerCase().endsWith(suffix.toLowerCase())) {
+        input.value = value.slice(0, -suffix.length);
+    }
+
+    const suffixElement = input.closest('[data-email-domain-field]')?.querySelector('[data-email-domain-suffix]');
+    suffixElement?.classList.toggle('hidden', input.value.includes('@'));
+}
+
+function initializeProfilePhotoDrafts() {
+    document.querySelectorAll('form[data-profile-photo-draft-key]').forEach((form) => {
+        const key = profilePhotoDraftKey(form.dataset.profilePhotoDraftKey);
+
+        try {
+            if (form.dataset.profilePhotoUpdated === 'true') {
+                sessionStorage.removeItem(key);
+
+                return;
+            }
+
+            const draft = loadProfilePhotoDraft(sessionStorage, key);
+
+            if (!draft) {
+                return;
+            }
+
+            const input = form.querySelector('input[type="file"][name="foto_personal"]');
+
+            if (!input) {
+                return;
+            }
+
+            restoreProfilePhotoDraft(draft, input).catch((error) => {
+                console.error('No se pudo restaurar la fotografía seleccionada del perfil.', error);
+
+                try {
+                    sessionStorage.removeItem(key);
+                } catch (storageError) {
+                    console.error('No se pudo limpiar el borrador de la fotografía del perfil.', storageError);
+                }
+            });
+        } catch (error) {
+            console.error('No se pudo recuperar el borrador de la fotografía del perfil.', error);
+        }
+    });
+}
+
+function persistProfilePhotoDraft(key, file) {
+    try {
+        return saveProfilePhotoDraft(sessionStorage, key, file);
+    } catch (error) {
+        return Promise.reject(error);
+    }
+}
 
 /**
  * Abre el portal estudiantil reutilizando siempre la misma ventana.

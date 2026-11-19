@@ -85,8 +85,13 @@ class DashboardController extends Controller
             ->whereNull('leida_en')
             ->count();
 
-        $gestionVigente = Gestion::vigente();
+        $gestionVigente = Gestion::activa();
         $gestionVigenteCodigo = ConfiguracionAcademica::gestionVigente();
+
+        if ($gestionVigente === null || $gestionVigenteCodigo !== $gestionVigente->codigo) {
+            $gestionVigente = null;
+            $gestionVigenteCodigo = null;
+        }
 
         $conteoPorSemestre = Estudiante::query()
             ->selectRaw('semestre, COUNT(*) as total')
@@ -122,11 +127,35 @@ class DashboardController extends Controller
             ->where('estado', 'activo')
             ->count();
         $estadisticas['horarios_vigentes'] = Horario::query()
-            ->where('gestion', $gestionVigenteCodigo)
+            ->where(function (Builder $query) use ($gestionVigente, $gestionVigenteCodigo): void {
+                if ($gestionVigente === null || $gestionVigenteCodigo === null) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where('gestion_id', $gestionVigente->id)
+                    ->orWhere(function (Builder $legacyQuery) use ($gestionVigenteCodigo): void {
+                        $legacyQuery->whereNull('gestion_id')
+                            ->where('gestion', $gestionVigenteCodigo);
+                    });
+            })
             ->where('estado', 'activo')
             ->count();
         $estadisticas['inscripciones_vigentes'] = Inscripcion::query()
-            ->where('gestion', $gestionVigenteCodigo)
+            ->where(function (Builder $query) use ($gestionVigente, $gestionVigenteCodigo): void {
+                if ($gestionVigente === null || $gestionVigenteCodigo === null) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where('gestion_id', $gestionVigente->id)
+                    ->orWhere(function (Builder $legacyQuery) use ($gestionVigenteCodigo): void {
+                        $legacyQuery->whereNull('gestion_id')
+                            ->where('gestion', $gestionVigenteCodigo);
+                    });
+            })
             ->where('estado', 'Cursando')
             ->count();
         $estadisticas['cuentas_bloqueadas'] = User::query()
@@ -166,6 +195,7 @@ class DashboardController extends Controller
             'notificaciones',
             'notificacionesNoLeidas',
             'gestionVigente',
+            'gestionVigenteCodigo',
             'estudiantesPorSemestre',
             'maxEstudiantesSemestre',
             'solicitudesRecientes',
@@ -176,11 +206,32 @@ class DashboardController extends Controller
 
     private function docenteDashboard(User $user): View
     {
+        $gestionVigente = Gestion::activa();
+        $gestionVigenteCodigo = ConfiguracionAcademica::gestionVigente();
+
+        if ($gestionVigente === null || $gestionVigenteCodigo !== $gestionVigente->codigo) {
+            $gestionVigente = null;
+            $gestionVigenteCodigo = null;
+        }
+
         $horarios = DB::table('horarios')
             ->join('materias', 'horarios.materia_id', '=', 'materias.id')
             ->where('horarios.docente_id', $user->docente_id)
             ->whereRaw('LOWER(horarios.estado) = ?', ['activo'])
             ->whereRaw('LOWER(materias.estado) = ?', ['activo'])
+            ->where(function ($query) use ($gestionVigente, $gestionVigenteCodigo): void {
+                if ($gestionVigente === null || $gestionVigenteCodigo === null) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query->where('horarios.gestion_id', $gestionVigente->id)
+                    ->orWhere(function ($legacyQuery) use ($gestionVigenteCodigo): void {
+                        $legacyQuery->whereNull('horarios.gestion_id')
+                            ->where('horarios.gestion', $gestionVigenteCodigo);
+                    });
+            })
             ->orderBy('horarios.dia_semana')
             ->orderBy('horarios.hora_inicio')
             ->get([
@@ -195,15 +246,20 @@ class DashboardController extends Controller
             ]);
 
         $materiaIds = $horarios->pluck('materia_id')->unique();
-        $gestionVigenteCodigo = ConfiguracionAcademica::gestionVigente();
-
         $asignacionesActivas = Asignacion::query()
             ->forTeacher($user)
             ->whereRaw('LOWER(estado) = ?', ['activa']);
         $asignacionesRecientes = Asignacion::query()
             ->forTeacher($user)
-            ->with(['equipo', 'estudiante'])
+            ->with(['equipo.activo', 'equipo.ultimoHeartbeat', 'estudiante'])
             ->latest()
+            ->take(5)
+            ->get();
+        $incidenciasRecientes = Incidencia::query()
+            ->with(['activo', 'asignacion.equipo'])
+            ->whereIn('asignacion_id', (clone $asignacionesActivas)->select('id'))
+            ->whereIn('estado', ['abierta', 'en_revision'])
+            ->latest('fecha_reporte')
             ->take(5)
             ->get();
         $equiposDocente = Equipo::query()
@@ -238,7 +294,19 @@ class DashboardController extends Controller
             'materias' => $materiaIds->count(),
             'estudiantes' => DB::table('inscripciones')
                 ->whereIn('materia_id', $materiaIds)
-                ->where('gestion', $gestionVigenteCodigo)
+                ->where(function ($query) use ($gestionVigente, $gestionVigenteCodigo): void {
+                    if ($gestionVigente === null || $gestionVigenteCodigo === null) {
+                        $query->whereRaw('1 = 0');
+
+                        return;
+                    }
+
+                    $query->where('gestion_id', $gestionVigente->id)
+                        ->orWhere(function ($legacyQuery) use ($gestionVigenteCodigo): void {
+                            $legacyQuery->whereNull('gestion_id')
+                                ->where('gestion', $gestionVigenteCodigo);
+                        });
+                })
                 ->where('estado', 'Cursando')
                 ->distinct()
                 ->count('estudiante_id'),
@@ -259,6 +327,7 @@ class DashboardController extends Controller
             'horarios',
             'estadisticas',
             'asignacionesRecientes',
+            'incidenciasRecientes',
             'gestionVigenteCodigo',
             'ultimaActualizacionMonitoreo',
             'diagnosticosCriticos',

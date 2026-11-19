@@ -31,36 +31,56 @@
 
                 <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <p class="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">Administración / Registro</p>
-                        <h1 class="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Solicitudes de estudiantes</h1>
-                        <p class="mt-2 text-sm text-slate-500">Revisa los datos completos antes de aprobar o rechazar una solicitud.</p>
+                        <p class="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">Administración</p>
+                        <h1 class="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Solicitudes</h1>
+                        <p class="mt-2 text-sm text-slate-500">Selecciona el tipo de solicitud que deseas revisar.</p>
                     </div>
-                    <a href="{{ route('dashboard') }}" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-[#272F7A] shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50">Volver al dashboard</a>
                 </header>
+
+                <nav aria-label="Tipo de solicitud" class="flex flex-wrap gap-3">
+                    <a
+                        href="{{ route('admin.solicitudes.index', ['panel' => 'registros', 'estado' => $estado]) }}"
+                        @if ($panel === 'registros') aria-current="page" @endif
+                        class="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black transition {{ $panel === 'registros' ? 'bg-[#272F7A] text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-[#272F7A]' }}"
+                    >
+                        Solicitudes de registro
+                    </a>
+                    <a
+                        href="{{ route('admin.solicitudes.index', ['panel' => 'equipos', 'estado' => $estado]) }}"
+                        @if ($panel === 'equipos') aria-current="page" @endif
+                        class="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black transition {{ $panel === 'equipos' ? 'bg-emerald-700 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800' }}"
+                    >
+                        Solicitudes de equipos
+                        @if ($solicitudesEquiposPendientes > 0)
+                            <span class="rounded-full px-2 py-0.5 text-xs {{ $panel === 'equipos' ? 'bg-white/15 text-white' : 'bg-emerald-100 text-emerald-800' }}">{{ $solicitudesEquiposPendientes }}</span>
+                        @endif
+                    </a>
+                </nav>
 
                 <div class="flex flex-wrap gap-2">
                     @foreach (['pendiente' => 'Pendientes', 'aprobada' => 'Aprobadas', 'rechazada' => 'Rechazadas', 'cancelada' => 'Canceladas'] as $valor => $etiqueta)
-                        <a href="{{ route('admin.solicitudes.index', ['estado' => $valor]) }}" class="rounded-xl px-4 py-2 text-sm font-semibold transition {{ $estado === $valor ? 'bg-[#272F7A] text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}">{{ $etiqueta }}</a>
+                        <a href="{{ route('admin.solicitudes.index', ['panel' => $panel, 'estado' => $valor]) }}" class="rounded-xl px-4 py-2 text-sm font-semibold transition {{ $estado === $valor ? 'bg-[#272F7A] text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}">{{ $etiqueta }}</a>
                     @endforeach
                 </div>
 
-                @if ($estado === 'pendiente')
-                    <form id="bulk-approve-form" method="POST" action="{{ route('admin.solicitudes.aprobar-multiples') }}">
-                        @csrf
-                    </form>
-                @endif
+                @if ($panel === 'registros')
+                    @if ($estado === 'pendiente')
+                        <form id="bulk-approve-form" method="POST" action="{{ route('admin.solicitudes.aprobar-multiples') }}">
+                            @csrf
+                        </form>
+                    @endif
 
-                <section
-                    x-data="{
-                        abierta: null,
-                        seleccionadas: [],
-                        todas: false,
-                        alternarTodas() {
-                            this.seleccionadas = this.todas ? @js($solicitudes->pluck('id')->values()) : [];
-                        }
-                    }"
-                    class="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm"
-                >
+                    <section
+                        x-data="{
+                            abierta: null,
+                            seleccionadas: [],
+                            todas: false,
+                            alternarTodas() {
+                                this.seleccionadas = this.todas ? @js($solicitudes->pluck('id')->values()) : [];
+                            }
+                        }"
+                        class="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm"
+                    >
                     <div class="border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 to-white px-5 py-4">
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
@@ -206,7 +226,83 @@
                         </table>
                     </div>
                     <div class="border-t border-slate-100 px-5 py-4">{{ $solicitudes->links() }}</div>
-                </section>
+                    </section>
+                @else
+                    <section class="overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                        <div class="border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 to-white px-5 py-4">
+                            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p class="text-sm font-black text-slate-800">Solicitudes de equipos: {{ ['pendiente' => 'Pendientes', 'aprobada' => 'Aprobadas', 'rechazada' => 'Rechazadas', 'cancelada' => 'Canceladas'][$estado] }}</p>
+                                    <p class="mt-1 text-xs text-slate-500">Solicitudes enviadas por estudiantes inscritos. La aprobación crea su asignación.</p>
+                                </div>
+                                <span class="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{{ $estado === 'pendiente' ? $solicitudesEquiposPendientes : $solicitudesEquipos->total() }} {{ $estado === 'pendiente' ? 'pendiente(s)' : 'solicitud(es)' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="grid gap-4 p-5 lg:grid-cols-2">
+                            @forelse ($solicitudesEquipos as $solicitudEquipo)
+                                @php
+                                    $etiquetaEstadoEquipo = $solicitudEquipo->estado === 'parcialmente_aprobada'
+                                        ? 'Parcialmente aprobada'
+                                        : ucfirst($solicitudEquipo->estado);
+                                    $colorEstadoEquipo = match ($solicitudEquipo->estado) {
+                                        'pendiente' => 'bg-amber-100 text-amber-700',
+                                        'aprobada', 'parcialmente_aprobada' => 'bg-emerald-100 text-emerald-700',
+                                        'rechazada' => 'bg-rose-100 text-rose-700',
+                                        default => 'bg-slate-100 text-slate-700',
+                                    };
+                                @endphp
+                                <article class="rounded-2xl border border-slate-200 p-4">
+                                    <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                                        <div>
+                                            <p class="font-black text-slate-800">{{ $solicitudEquipo->estudianteSolicitante?->nombreCompleto() }}</p>
+                                            <p class="mt-1 text-sm text-slate-600">{{ $solicitudEquipo->horario?->materia?->nombre }} · {{ $solicitudEquipo->fecha_uso?->format('d/m/Y') }}</p>
+                                            <p class="mt-1 text-xs text-slate-500">
+                                                {{ strtoupper($solicitudEquipo->tipo_equipo) }} · {{ $solicitudEquipo->horario?->docente?->nombreCompleto() ?: 'Sin docente' }}
+                                            </p>
+                                        </div>
+                                        <span class="w-fit rounded-full px-3 py-1 text-xs font-black {{ $colorEstadoEquipo }}">{{ $etiquetaEstadoEquipo }}</span>
+                                    </div>
+
+                                    @if ($solicitudEquipo->estado === 'pendiente')
+                                        <form method="POST" action="{{ route('solicitudes.equipos.approve', $solicitudEquipo) }}" class="mt-4 grid gap-2 sm:grid-cols-3">
+                                            @csrf
+                                            <select name="equipo_id" required class="rounded-xl border-slate-300 text-sm sm:col-span-2">
+                                                <option value="">Selecciona equipo</option>
+                                                @foreach ($equiposDisponibles->where('tipo_equipo', $solicitudEquipo->tipo_equipo) as $equipo)
+                                                    <option value="{{ $equipo->id }}">{{ $equipo->activo?->codigo }} · {{ $equipo->activo?->nombre }}</option>
+                                                @endforeach
+                                            </select>
+                                            <select name="estado_fisico_entrega" class="rounded-xl border-slate-300 text-sm">
+                                                <option value="bueno">Entrega: bueno</option>
+                                                <option value="regular">Entrega: regular</option>
+                                                <option value="danado">Entrega: dañado</option>
+                                            </select>
+                                            <input type="date" name="fecha_devolucion_prevista" min="{{ now()->toDateString() }}" required class="rounded-xl border-slate-300 text-sm sm:col-span-2">
+                                            <button class="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-black text-white transition hover:bg-emerald-700">Aprobar y asignar</button>
+                                        </form>
+                                        <form method="POST" action="{{ route('solicitudes.equipos.reject', $solicitudEquipo) }}" class="mt-2 flex flex-col gap-2 sm:flex-row">
+                                            @csrf
+                                            <input name="observaciones" required class="min-w-0 flex-1 rounded-xl border-slate-300 text-sm" placeholder="Motivo del rechazo">
+                                            <button class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white transition hover:bg-rose-700">Rechazar</button>
+                                        </form>
+                                    @elseif (in_array($solicitudEquipo->estado, ['aprobada', 'parcialmente_aprobada'], true) && $solicitudEquipo->equipo !== null)
+                                        <p class="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                                            Equipo asignado: {{ $solicitudEquipo->equipo->activo?->codigo }} · {{ $solicitudEquipo->equipo->activo?->nombre }}
+                                        </p>
+                                    @elseif (filled($solicitudEquipo->observaciones))
+                                        <p class="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{{ $solicitudEquipo->observaciones }}</p>
+                                    @endif
+                                </article>
+                            @empty
+                                <p class="px-1 py-6 text-sm text-slate-500 lg:col-span-2">No hay solicitudes de equipos {{ strtolower(['pendiente' => 'pendientes', 'aprobada' => 'aprobadas', 'rechazada' => 'rechazadas', 'cancelada' => 'canceladas'][$estado]) }}.</p>
+                            @endforelse
+                        </div>
+                        @if ($solicitudesEquipos->hasPages())
+                            <div class="border-t border-slate-100 px-5 py-4">{{ $solicitudesEquipos->links() }}</div>
+                        @endif
+                    </section>
+                @endif
             </div>
         </main>
     </x-admin-shell>

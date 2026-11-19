@@ -3,14 +3,9 @@
         <div>
             <p class="text-sm font-semibold text-[#4959A6]">Panel docente / Comunidad institucional</p>
             <h2 class="mt-1 text-3xl font-bold text-slate-800">Panel Académico</h2>
-            <p class="mt-2 text-sm text-slate-500">Consulta los perfiles personales de tus colegas docentes registrados.</p>
+            <p class="mt-2 text-sm text-slate-500">Consulta perfiles personales de docentes y de administradores que también tienen perfil docente.</p>
         </div>
-        <a href="{{ route('dashboard') }}" class="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-white px-5 py-3 text-sm font-semibold text-[#272F7A] shadow-sm transition hover:bg-indigo-50">Volver al inicio</a>
     </section>
-
-    <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-        Esta sección muestra datos del perfil personal docente. No incluye usuarios, credenciales, contraseñas ni información de acceso al sistema.
-    </div>
 
     <section class="rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
         <form method="GET" action="{{ route('panel-docente.academico') }}" class="flex flex-col gap-3 sm:flex-row">
@@ -61,8 +56,8 @@
             </article>
         @empty
             <div class="rounded-2xl border border-dashed border-indigo-200 bg-white px-6 py-14 text-center lg:col-span-2">
-                <p class="text-lg font-bold text-slate-700">{{ ($filtros['buscar'] ?? '') !== '' ? 'No encontramos colegas con esa búsqueda' : 'Aún no hay colegas docentes registrados' }}</p>
-                <p class="mt-2 text-sm text-slate-500">Los perfiles personales de docentes registrados aparecerán en esta lista.</p>
+                <p class="text-lg font-bold text-slate-700">{{ ($filtros['buscar'] ?? '') !== '' ? 'No encontramos perfiles con esa búsqueda' : 'Aún no hay perfiles docentes registrados' }}</p>
+                <p class="mt-2 text-sm text-slate-500">Los perfiles personales de docentes y administradores asociados a un perfil docente aparecerán en esta lista.</p>
             </div>
         @endforelse
     </section>

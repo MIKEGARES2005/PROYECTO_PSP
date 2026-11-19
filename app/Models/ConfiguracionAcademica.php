@@ -15,16 +15,34 @@ class ConfiguracionAcademica extends Model
     /**
      * Gestión académica vigente para todas las inscripciones nuevas.
      */
-    public static function gestionVigente(): string
+    public static function gestionVigente(): ?string
     {
-        return (string) (static::query()->find(1)?->gestion_vigente ?? '2026-II');
+        $configuracion = static::query()->find(1);
+        $gestionActiva = Gestion::activa();
+
+        if ($configuracion?->gestion_vigente === null || $gestionActiva === null) {
+            return null;
+        }
+
+        $codigoConfigurado = self::normalizarCodigo($configuracion->gestion_vigente);
+
+        return $gestionActiva->codigo === $codigoConfigurado ? $codigoConfigurado : null;
     }
 
     public static function actualizarGestionVigente(string $codigo): self
     {
         return static::query()->updateOrCreate(
             ['id' => 1],
-            ['gestion_vigente' => $codigo],
+            ['gestion_vigente' => self::normalizarCodigo($codigo)],
         );
+    }
+
+    public static function normalizarCodigo(string $codigo): string
+    {
+        if (preg_match('/^(\\d{4})-(I|II)$/', $codigo, $coincidencias) === 1) {
+            return $coincidencias[2].'-'.$coincidencias[1];
+        }
+
+        return strtoupper(trim($codigo));
     }
 }

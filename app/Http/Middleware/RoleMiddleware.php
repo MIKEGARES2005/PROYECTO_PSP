@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 class RoleMiddleware
@@ -16,6 +17,17 @@ class RoleMiddleware
 
         if (! $user) {
             abort(401);
+        }
+
+        if (
+            in_array($user->tipo_usuario, ['docente', 'estudiante'], true)
+            && ($user->activo === false || ! $user->perfilHabilitado())
+        ) {
+            Auth::guard($usesStudentGuard ? 'student' : 'web')->logout();
+
+            return redirect()
+                ->route($usesStudentGuard ? 'estudiante.login' : 'login')
+                ->with('warning', 'La cuenta fue desactivada. Contacte con administración para el acceso.');
         }
 
         if ($user->activo === false) {

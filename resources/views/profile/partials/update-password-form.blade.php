@@ -1,6 +1,10 @@
 @php($passwordUpdated = session('status') === 'password-updated')
 
-<section x-data="{ actualVisible: false, nuevaVisible: false, confirmacionVisible: false }">
+<section x-data="{
+    actualVisible: false,
+    nuevaVisible: false,
+    confirmacionVisible: false,
+}">
     <header class="mb-6 border-b border-slate-100 pb-5">
         <div class="flex items-center gap-3">
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">

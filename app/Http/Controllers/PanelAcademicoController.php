@@ -31,7 +31,7 @@ class PanelAcademicoController extends Controller
                 'estado',
                 'foto_personal',
             ])
-            ->whereHas('users', fn (Builder $query) => $query->where('tipo_usuario', 'docente'))
+            ->whereHas('users', fn (Builder $query) => $query->whereIn('tipo_usuario', ['administrador', 'docente']))
             ->when($buscar !== '', function (Builder $query) use ($buscar): void {
                 $query->where(function (Builder $docentesQuery) use ($buscar): void {
                     $docentesQuery->where('nombres', 'like', "%{$buscar}%")

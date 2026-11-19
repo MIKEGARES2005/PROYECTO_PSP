@@ -15,8 +15,18 @@ class Categoria extends Model
     protected $fillable = [
         'nombre',
         'grupo',
+        'tipo_registro',
         'estado',
+        'prefijo_codigo',
+        'codigo_secuencia',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'codigo_secuencia' => 'integer',
+        ];
+    }
 
     public function activos(): HasMany
     {

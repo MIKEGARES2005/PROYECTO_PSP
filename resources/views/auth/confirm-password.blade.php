@@ -6,15 +6,26 @@
         </p>
     </div>
 
-    <form method="POST" action="{{ route('password.confirm') }}" class="space-y-5">
+    <form method="POST" action="{{ route('password.confirm') }}" class="space-y-5" x-data="{ passwordVisible: false }">
         @csrf
 
         <div>
             <x-input-label for="password" value="Contraseña" />
-            <x-text-input id="password" class="mt-1 block w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
+            <div class="relative mt-1">
+                <x-text-input
+                    id="password"
+                    class="block w-full pr-12"
+                    type="password"
+                    x-bind:type="passwordVisible ? 'text' : 'password'"
+                    name="password"
+                    required
+                    autocomplete="current-password"
+                />
+                <button type="button" @click="passwordVisible = !passwordVisible" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 transition hover:text-[#272F7A]" x-bind:aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" x-bind:title="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" x-bind:aria-pressed="passwordVisible">
+                    <x-icon name="eye" x-show="!passwordVisible" class="h-5 w-5" />
+                    <x-icon name="eye-off" x-cloak x-show="passwordVisible" class="h-5 w-5" />
+                </button>
+            </div>
 
             <x-input-error :messages="$errors->get('password')" class="mt-2" />
         </div>

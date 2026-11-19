@@ -156,14 +156,14 @@
                     <div class="min-w-0">
                         <h2 class="truncate text-sm font-black text-slate-900">
                             @if ($categoria === 'estudiante')
-                                Estudiantes de {{ $semestre }}° semestre
+                                {{ $semestre === null ? 'Estudiantes de todos los semestres' : 'Estudiantes de '.$semestre.'° semestre' }}
                             @else
                                 {{ $etiquetaCategoria }}
                             @endif
                         </h2>
                         <p class="mt-0.5 text-xs text-slate-500">
                             @if ($categoria === 'estudiante')
-                                Cuentas correspondientes al semestre seleccionado.
+                                {{ $semestre === null ? 'Cuentas correspondientes a todos los semestres.' : 'Cuentas correspondientes al semestre seleccionado.' }}
                             @else
                                 Ordenados por fecha de registro, del más reciente al más antiguo.
                             @endif

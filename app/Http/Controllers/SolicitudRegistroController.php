@@ -2,12 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Equipo;
 use App\Models\Estudiante;
 use App\Models\Gestion;
+use App\Models\Solicitud;
 use App\Models\SolicitudRegistro;
 use App\Models\User;
+use App\Rules\CarnetIdentidad;
+use App\Rules\NombreCompleto;
+use App\Rules\TelefonoBoliviano;
 use App\Services\BitacoraService;
 use App\Services\NotificacionService;
+use App\Support\DireccionEstudiante;
+use App\Support\NormalizadorCredencial;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -77,6 +84,16 @@ class SolicitudRegistroController extends Controller
     /** Almacenar la solicitud de registro pública. */
     public function storePublic(Request $request): RedirectResponse
     {
+        $reglasDatosPersonales = [
+            'nombres' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_paterno' => ['required', 'string', 'max:100', new NombreCompleto],
+            'apellido_materno' => ['nullable', 'string', 'max:100', new NombreCompleto],
+            'ci' => ['required', 'string', new CarnetIdentidad],
+            'telefono' => ['nullable', 'string', new TelefonoBoliviano],
+        ];
+
+        $request->validate($reglasDatosPersonales);
+
         $errores = [];
         $ci = trim((string) $request->input('ci'));
         $matricula = trim((string) $request->input('matricula'));
@@ -120,16 +137,13 @@ class SolicitudRegistroController extends Controller
         }
 
         $datos = $request->validate([
-            'nombres' => ['required', 'string', 'max:100'],
-            'apellido_paterno' => ['required', 'string', 'max:100'],
-            'apellido_materno' => ['nullable', 'string', 'max:100'],
+            ...$reglasDatosPersonales,
             'ci' => [
-                'required', 'string', 'max:20',
+                ...$reglasDatosPersonales['ci'],
                 Rule::unique('estudiantes', 'ci'),
                 Rule::unique('solicitudes_registro', 'ci')->where('estado', 'pendiente'),
             ],
             'ci_extension' => ['required', Rule::in(['LP', 'OR', 'PT', 'CB', 'SC', 'TJ', 'CH', 'BE', 'PD'])],
-            'telefono' => ['nullable', 'string', 'max:20'],
             'matricula' => [
                 'nullable', 'string', 'max:30',
                 Rule::unique('estudiantes', 'matricula'),
@@ -139,8 +153,23 @@ class SolicitudRegistroController extends Controller
             'correo_institucional' => ['nullable', 'email', 'max:150'],
             'correo_personal' => ['nullable', 'email', 'max:150'],
             'direccion' => ['nullable', 'string', 'max:255'],
+            'direccion_zona' => ['nullable', 'string', 'max:80'],
+            'direccion_tipo_via' => [
+                Rule::requiredIf(filled($request->input('direccion_via'))),
+                'nullable',
+                Rule::in(['Av.', 'C.']),
+            ],
+            'direccion_via' => ['nullable', 'string', 'max:120'],
+            'direccion_numero_puerta' => ['nullable', 'string', 'max:20'],
         ]);
 
+        $datos['direccion'] = DireccionEstudiante::desdeDatos($datos, $datos['direccion'] ?? null);
+        unset(
+            $datos['direccion_zona'],
+            $datos['direccion_tipo_via'],
+            $datos['direccion_via'],
+            $datos['direccion_numero_puerta'],
+        );
         $datos['semestre'] = 1;
         $datos['matricula'] = $datos['matricula'] ?? null;
         $datos['generacion_ingreso'] = $this->generacionIngresoActual();
@@ -197,16 +226,54 @@ class SolicitudRegistroController extends Controller
     public function indexAdmin(Request $request): View
     {
         $estado = $request->query('estado', 'pendiente');
+        $panel = $request->query('panel', 'registros');
+        $estadosPermitidos = ['pendiente', 'aprobada', 'rechazada', 'cancelada'];
+
+        if (! in_array($panel, ['registros', 'equipos'], true)) {
+            $panel = 'registros';
+        }
+
+        if (! in_array($estado, $estadosPermitidos, true)) {
+            $estado = 'pendiente';
+        }
 
         $solicitudes = SolicitudRegistro::query()
-            ->when($estado, fn ($q) => $q->where('estado', $estado))
+            ->where('estado', $estado)
             ->orderByDesc('created_at')
             ->paginate(15)
             ->withQueryString();
 
+        $solicitudesEquipos = Solicitud::query()
+            ->with(['estudianteSolicitante', 'horario.materia', 'horario.docente', 'equipo.activo'])
+            ->when(
+                $estado === 'aprobada',
+                fn ($query) => $query->whereIn('estado', ['aprobada', 'parcialmente_aprobada']),
+                fn ($query) => $query->where('estado', $estado),
+            )
+            ->latest()
+            ->paginate(12)
+            ->withQueryString();
+        $solicitudesEquiposPendientes = Solicitud::query()
+            ->where('estado', 'pendiente')
+            ->count();
+        $equiposDisponibles = collect();
+
+        if ($panel === 'equipos' && $estado === 'pendiente') {
+            $equiposDisponibles = Equipo::query()
+                ->with('activo')
+                ->whereHas('activo', fn ($query) => $query->where('estado_uso', 'disponible'))
+                ->whereDoesntHave('asignaciones', fn ($query) => $query->whereIn('estado', ['pendiente_entrega', 'activa', 'devolucion_pendiente', 'vencida', 'con_incidencia']))
+                ->orderBy('identificador')
+                ->get();
+        }
+
         return view('admin.solicitudes.index', [
             'solicitudes' => $solicitudes,
+            'solicitudesEquipos' => $solicitudesEquipos,
+            'solicitudesEquiposPendientes' => $solicitudesEquiposPendientes,
+            'equiposDisponibles' => $equiposDisponibles,
             'estado' => $estado,
+            'panel' => $panel,
             'resultado' => $request->session()->pull('registro_resultado'),
         ]);
     }
@@ -481,7 +548,7 @@ class SolicitudRegistroController extends Controller
             (int) $usuarioCreado->id,
             'solicitud_aprobada',
             'Solicitud aceptada',
-            'Tu solicitud fue aceptada. Al iniciar sesiÃ³n, cambia tu usuario y contraseÃ±a y registra tus preguntas de seguridad en el panel de tu perfil.',
+            'Tu solicitud fue aceptada. Al iniciar sesión, cambia tu usuario y contraseña y registra tus preguntas de seguridad en el panel de tu perfil.',
             route('estudiante.profile.edit')
         );
 
@@ -498,8 +565,8 @@ class SolicitudRegistroController extends Controller
      */
     private function generarCredenciales(SolicitudRegistro $solicitud): array
     {
-        $nombres = $this->normalizarCredencial($solicitud->nombres);
-        $apellidoPaterno = $this->normalizarCredencial($solicitud->apellido_paterno);
+        $nombres = NormalizadorCredencial::normalizar($solicitud->nombres);
+        $apellidoPaterno = NormalizadorCredencial::normalizar($solicitud->apellido_paterno);
         $ci = $this->normalizarCredencial($solicitud->ci);
         $usernameBase = $nombres.'_'.$apellidoPaterno;
         $username = Str::limit($usernameBase, 50, '');

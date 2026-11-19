@@ -1,4 +1,5 @@
 <x-admin-layout>
+    <x-admin-shell>
     <main class="min-h-screen bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/70 px-4 py-8 sm:px-6 lg:px-8">
         <div class="mx-auto max-w-6xl space-y-6">
             <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -86,4 +87,5 @@
             </section>
         </div>
     </main>
+    </x-admin-shell>
 </x-admin-layout>

@@ -4,6 +4,9 @@ namespace App\Http\Requests;
 
 use App\Models\Docente;
 use App\Models\User;
+use App\Rules\CarnetIdentidad;
+use App\Rules\NombreCompleto;
+use App\Rules\TelefonoBoliviano;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -39,18 +42,19 @@ class ProfileUpdateRequest extends FormRequest
 
         if ($user->docente_id !== null) {
             return array_merge($reglasCuenta, [
-                'nombres' => ['required', 'string', 'max:100'],
-                'apellido_paterno' => ['required', 'string', 'max:100'],
-                'apellido_materno' => ['nullable', 'string', 'max:100'],
+                'nombres' => ['required', 'string', 'max:100', new NombreCompleto],
+                'apellido_paterno' => ['required', 'string', 'max:100', new NombreCompleto],
+                'apellido_materno' => ['nullable', 'string', 'max:100', new NombreCompleto],
                 'ci' => [
-                    'required', 'string', 'max:20',
+                    'required', 'string',
+                    new CarnetIdentidad,
                     Rule::unique(Docente::class, 'ci')->ignore($user->docente_id, 'id'),
                 ],
                 'ci_extension' => [
                     'nullable',
                     Rule::in(['LP', 'OR', 'PT', 'CB', 'SC', 'TJ', 'CH', 'BE', 'PD']),
                 ],
-                'telefono' => ['nullable', 'string', 'max:20'],
+                'telefono' => ['nullable', 'string', new TelefonoBoliviano],
                 'correo_personal' => ['nullable', 'email', 'max:150'],
                 'cargo' => ['required', 'string', 'max:100'],
                 'especialidad' => ['nullable', 'string', 'max:150'],
@@ -62,9 +66,17 @@ class ProfileUpdateRequest extends FormRequest
 
         if ($user->estudiante_id !== null) {
             return array_merge($reglasCuenta, [
-                'telefono' => ['nullable', 'string', 'max:20'],
+                'telefono' => ['nullable', 'string', new TelefonoBoliviano],
                 'correo_personal' => ['nullable', 'email', 'max:150'],
                 'direccion' => ['nullable', 'string', 'max:255'],
+                'direccion_zona' => ['nullable', 'string', 'max:80'],
+                'direccion_tipo_via' => [
+                    Rule::requiredIf($this->filled('direccion_via')),
+                    'nullable',
+                    Rule::in(['Av.', 'C.']),
+                ],
+                'direccion_via' => ['nullable', 'string', 'max:120'],
+                'direccion_numero_puerta' => ['nullable', 'string', 'max:20'],
                 'foto_personal' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             ]);
         }

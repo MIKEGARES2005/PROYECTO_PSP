@@ -1,18 +1,30 @@
 @php
     $esEstudiante = $user->isEstudiante();
+    $esDocente = $user->tipo_usuario === 'docente';
     $rutaPanel = $esEstudiante ? route('estudiante.dashboard') : route('dashboard');
+    $contextoSeguridad = $esEstudiante ? 'Portal del estudiante' : ($esDocente ? 'Panel docente' : 'Administración');
+    $claseAcentoSeguridad = $esEstudiante ? 'text-emerald-600' : ($esDocente ? 'text-sky-600' : 'text-indigo-500');
+    $claseHeroSeguridad = $esEstudiante
+        ? 'bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 shadow-emerald-950/20'
+        : ($esDocente
+            ? 'bg-gradient-to-br from-[#1D74C9] via-[#145FAE] to-[#0C4387] shadow-sky-950/20'
+            : 'bg-gradient-to-br from-[#0B1226] via-[#1E2A5A] to-[#272F7A] shadow-indigo-950/20');
+    $claseTextoHeroSeguridad = $esDocente ? 'text-sky-50/90' : 'text-indigo-100/80';
+    $claseAccionSeguridad = $esDocente
+        ? 'bg-gradient-to-r from-sky-600 to-blue-700 shadow-sky-900/10 hover:from-sky-700 hover:to-blue-800'
+        : 'bg-gradient-to-r from-[#1E2A5A] to-[#272F7A] shadow-indigo-950/10 hover:from-[#272F7A] hover:to-[#4959A6]';
 @endphp
 
-<main class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-    <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] {{ $esEstudiante ? 'text-emerald-600' : 'text-indigo-500' }}">
-        <span>{{ $esEstudiante ? 'Portal del estudiante' : 'Administración' }}</span>
+<div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] {{ $claseAcentoSeguridad }}">
+        <span>{{ $contextoSeguridad }}</span>
         <span class="text-slate-300">/</span>
         <span>Mi cuenta</span>
         <span class="text-slate-300">/</span>
         <span class="text-slate-400">Seguridad</span>
     </div>
 
-    <section class="dashboard-rise relative overflow-hidden rounded-3xl px-6 py-7 text-white shadow-2xl sm:px-8 sm:py-8 {{ $esEstudiante ? 'bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 shadow-emerald-950/20' : 'bg-gradient-to-br from-[#0B1226] via-[#1E2A5A] to-[#272F7A] shadow-indigo-950/20' }}">
+    <section class="dashboard-rise relative overflow-hidden rounded-3xl px-6 py-7 text-white shadow-2xl sm:px-8 sm:py-8 {{ $claseHeroSeguridad }}">
         @if ($esEstudiante)
             <div class="absolute right-4 top-4 z-10 hidden sm:right-8 sm:top-8 sm:block">
                 <a href="{{ route('estudiante.dashboard') }}" class="inline-flex items-center justify-center rounded-xl border border-white/70 bg-white px-3 py-2 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50 sm:px-4 sm:py-2.5 sm:text-sm">
@@ -40,7 +52,7 @@
                     </span>
                 </div>
                 <h1 class="mt-4 text-2xl font-black tracking-tight sm:text-3xl">Preguntas de seguridad</h1>
-                <p class="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">
+                <p class="mt-2 max-w-2xl text-sm leading-6 {{ $claseTextoHeroSeguridad }}">
                     Configura tres preguntas personales. Solo tú puedes consultar y actualizar las preguntas de tu cuenta.
                 </p>
             </div>
@@ -51,9 +63,11 @@
                 <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-cyan-100 ring-1 ring-white/10">
                     <x-icon name="shield" class="h-8 w-8" />
                 </span>
-                <a href="{{ route('estudiante.dashboard') }}" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white px-3 py-2.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50">
-                    Volver al panel
-                </a>
+                @if ($esEstudiante)
+                    <a href="{{ route('estudiante.dashboard') }}" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white px-3 py-2.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50">
+                        Volver al panel
+                    </a>
+                @endif
             </div>
 
             <div class="min-w-0">
@@ -68,7 +82,7 @@
                     </span>
                 </div>
                 <h1 class="mt-3 break-words text-2xl font-black leading-tight tracking-tight">Preguntas de seguridad</h1>
-                <p class="mt-2 text-sm leading-6 text-indigo-100/90">
+                <p class="mt-2 text-sm leading-6 {{ $esDocente ? 'text-sky-50/90' : 'text-indigo-100/90' }}">
                     Configura tres preguntas personales. Solo tú puedes consultar y actualizar las preguntas de tu cuenta.
                 </p>
             </div>
@@ -89,11 +103,11 @@
     <section class="dashboard-rise overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
         <div class="border-b border-slate-100 px-5 py-5 sm:px-7">
             <div class="flex items-center gap-3">
-                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl {{ $esDocente ? 'bg-sky-50 text-sky-600 ring-sky-100' : 'bg-indigo-50 text-indigo-600 ring-indigo-100' }} ring-1">
                     <x-icon name="key" class="h-5 w-5" />
                 </span>
                 <div>
-                    <p class="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Seguridad de la cuenta</p>
+                    <p class="text-[10px] font-black uppercase tracking-[0.2em] {{ $claseAcentoSeguridad }}">Seguridad de la cuenta</p>
                     <h2 class="mt-1 text-lg font-black tracking-tight text-slate-900">Configuración personal</h2>
                 </div>
             </div>
@@ -105,9 +119,23 @@
         <form method="POST" action="{{ $esEstudiante ? route('estudiante.security.questions.update') : route('security.questions.update') }}" class="space-y-5 p-5 sm:p-7" x-data="{
             respuestaVisible: [false, false, false, false],
             formatearPregunta(campo) {
-                const texto = campo.value.trim().replace(/^¿+/, '').replace(/\?+$/, '').trim();
-                campo.value = texto ? '¿' + texto + '?' : '';
-                campo.setSelectionRange(campo.value.length - (texto ? 1 : 0), campo.value.length - (texto ? 1 : 0));
+                const valor = campo.value;
+                const posicionOriginal = campo.selectionStart ?? valor.length;
+                const prefijo = valor.match(/^¿+/)?.[0].length ?? 0;
+                let texto = valor.replace(/^¿+/, '');
+                let posicion = Math.max(0, posicionOriginal - prefijo);
+                const sufijo = texto.match(/\?+$/)?.[0].length ?? 0;
+
+                if (sufijo > 0) {
+                    const inicioSufijo = texto.length - sufijo;
+                    posicion = Math.min(posicion, inicioSufijo);
+                    texto = texto.slice(0, inicioSufijo);
+                }
+
+                const tieneTexto = texto.trim().length > 0;
+                campo.value = tieneTexto ? '¿' + texto + '?' : '';
+                posicion = tieneTexto ? Math.min(posicion + 1, campo.value.length - 1) : 0;
+                campo.setSelectionRange(posicion, posicion);
             }
         }">
             @csrf
@@ -153,7 +181,7 @@
                 <fieldset class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
                     <legend class="px-2">
                         <span class="inline-flex items-center gap-2 text-sm font-black text-slate-800">
-                            <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-100 text-[11px] font-black text-indigo-700">{{ $i + 1 }}</span>
+                            <span class="flex h-6 w-6 items-center justify-center rounded-lg {{ $esDocente ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700' }} text-[11px] font-black">{{ $i + 1 }}</span>
                             Pregunta {{ $i + 1 }}
                         </span>
                     </legend>
@@ -171,7 +199,7 @@
                                 value="{{ $preguntaEscrita }}"
                                 maxlength="255"
                                 required
-                                class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-indigo-400 focus:ring-indigo-100"
+                                class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm {{ $esDocente ? 'focus:border-sky-400 focus:ring-sky-100' : 'focus:border-indigo-400 focus:ring-indigo-100' }}"
                             >
                             @error('preguntas.' . $i . '.pregunta')
                                 <p class="mt-2 text-sm text-rose-600">{{ $message }}</p>
@@ -191,9 +219,9 @@
                                     maxlength="255"
                                     autocomplete="new-password"
                                     required
-                                    class="w-full rounded-xl border-slate-300 px-4 py-3 pr-12 text-sm focus:border-indigo-400 focus:ring-indigo-100"
+                                    class="w-full rounded-xl border-slate-300 px-4 py-3 pr-12 text-sm {{ $esDocente ? 'focus:border-sky-400 focus:ring-sky-100' : 'focus:border-indigo-400 focus:ring-indigo-100' }}"
                                 >
-                                <button type="button" @click="respuestaVisible[{{ $i + 1 }}] = !respuestaVisible[{{ $i + 1 }}]" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 transition hover:text-indigo-700" x-bind:aria-label="respuestaVisible[{{ $i + 1 }}] ? 'Ocultar respuesta' : 'Mostrar respuesta'">
+                                <button type="button" @click="respuestaVisible[{{ $i + 1 }}] = !respuestaVisible[{{ $i + 1 }}]" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 transition {{ $esDocente ? 'hover:text-sky-700' : 'hover:text-indigo-700' }}" x-bind:aria-label="respuestaVisible[{{ $i + 1 }}] ? 'Ocultar respuesta' : 'Mostrar respuesta'">
                                     <x-icon name="eye" x-show="!respuestaVisible[{{ $i + 1 }}]" class="h-5 w-5" />
                                     <x-icon name="eye-off" x-cloak x-show="respuestaVisible[{{ $i + 1 }}]" class="h-5 w-5" />
                                 </button>
@@ -207,14 +235,14 @@
             @endfor
 
             <div class="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-                <a href="{{ $rutaPanel }}" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700">
+                <a href="{{ $rutaPanel }}" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition {{ $esDocente ? 'hover:border-sky-200 hover:text-sky-700' : 'hover:border-indigo-200 hover:text-indigo-700' }}">
                     Cancelar
                 </a>
-                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 {{ $esEstudiante ? 'bg-gradient-to-r from-emerald-600 to-teal-700 shadow-emerald-900/10 hover:from-emerald-700 hover:to-teal-800' : 'bg-gradient-to-r from-[#1E2A5A] to-[#272F7A] shadow-indigo-950/10 hover:from-[#272F7A] hover:to-[#4959A6]' }}">
+                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 {{ $esEstudiante ? 'bg-gradient-to-r from-emerald-600 to-teal-700 shadow-emerald-900/10 hover:from-emerald-700 hover:to-teal-800' : $claseAccionSeguridad }}">
                     <x-icon name="check" class="h-4 w-4" />
                     Guardar preguntas
                 </button>
             </div>
         </form>
     </section>
-</main>
+</div>

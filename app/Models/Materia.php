@@ -42,8 +42,29 @@ class Materia extends Model
         return $this->hasManyThrough(Asignacion::class, Horario::class);
     }
 
+    public static function nombreSemestre(string|int|null $semestre): ?string
+    {
+        $valor = trim((string) $semestre);
+
+        if ($valor === '') {
+            return null;
+        }
+
+        if (isset(self::SEMESTRES[(int) $valor]) && ctype_digit($valor)) {
+            return self::SEMESTRES[(int) $valor];
+        }
+
+        foreach (self::SEMESTRES as $nombre) {
+            if (mb_strtolower($nombre) === mb_strtolower($valor)) {
+                return $nombre;
+            }
+        }
+
+        return null;
+    }
+
     public function getSemestreNombreAttribute(): string
     {
-        return self::SEMESTRES[(int) $this->semestre] ?? (string) $this->semestre;
+        return self::nombreSemestre($this->semestre) ?? (string) $this->semestre;
     }
 }

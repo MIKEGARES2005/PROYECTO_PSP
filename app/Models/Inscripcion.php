@@ -37,6 +37,21 @@ class Inscripcion extends Model
         'nota_final_en',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Inscripcion $inscripcion): void {
+            if ($inscripcion->gestion_id === null || ! $inscripcion->isDirty(['gestion_id', 'gestion'])) {
+                return;
+            }
+
+            $codigoGestion = Gestion::query()->whereKey($inscripcion->gestion_id)->value('codigo');
+
+            if ($codigoGestion !== null) {
+                $inscripcion->gestion = $codigoGestion;
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -103,7 +118,7 @@ class Inscripcion extends Model
 
     public function notaMinimaAprobacion(): float
     {
-        return (float) config('academica.nota_minima_aprobacion', 56);
+        return (float) config('academica.nota_minima_aprobacion', 61);
     }
 
     public function resultadoSegunNotaFinal(): ?string

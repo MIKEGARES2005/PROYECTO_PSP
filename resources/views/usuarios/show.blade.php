@@ -14,6 +14,9 @@
     $fotoPersonal = $perfil?->foto_personal;
     $fotoDisponible = $fotoPersonal
         && \Illuminate\Support\Facades\Storage::disk('public')->exists($fotoPersonal);
+    $fotoPersonalUrl = $fotoDisponible
+        ? route('usuarios.photo', $usuario->id)
+        : null;
     $perfilActivo = $perfil
         ? strtolower((string) $perfil->estado) === 'activo'
         : (bool) $usuario->activo;
@@ -59,6 +62,7 @@
             class="min-h-screen bg-[#F4F7FC] text-slate-800"
             x-data="{
                 showRecover: false,
+                adminPasswordVisible: false,
                 loading: false,
                 success: false,
                 error: '',
@@ -138,7 +142,7 @@
                     <div class="flex flex-col gap-6 sm:flex-row sm:items-center">
                         <div class="flex h-36 w-36 shrink-0 items-center justify-center self-center overflow-hidden rounded-3xl border border-white/25 bg-white/10 text-4xl font-black text-cyan-100 shadow-xl ring-4 ring-white/10 sm:self-auto">
                             @if ($fotoDisponible)
-                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($fotoPersonal) }}" alt="Fotografía de {{ $nombreMostrado }}" class="h-full w-full object-cover">
+                                <img src="{{ $fotoPersonalUrl }}" alt="Fotografía de {{ $nombreMostrado }}" class="h-full w-full object-cover">
                             @else
                                 {{ $iniciales ?: 'U' }}
                             @endif
@@ -209,7 +213,7 @@
                     <div class="mb-5 flex items-center justify-between gap-4"><div><p class="text-xs font-bold uppercase tracking-[0.16em] text-rose-600">Seguridad</p><h2 id="recover-account-title" class="mt-1 text-lg font-bold text-slate-800">Recuperar cuenta</h2></div><button type="button" @click="closeRecover()" class="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-3xl font-black leading-none text-slate-600 transition hover:bg-rose-100 hover:text-rose-700" aria-label="Cerrar">&times;</button></div>
                     <form x-ref="recoverForm" @submit.prevent="recoverAccount()" class="space-y-4">
                         <p class="text-sm leading-6 text-slate-600">Confirma tu identidad con tu contraseña de administrador. Las credenciales se mostrarán una sola vez.</p>
-                        <div><label for="admin_password" class="mb-1.5 block text-sm font-semibold text-slate-700">Contraseña de administrador</label><input id="admin_password" type="password" name="admin_password" autocomplete="current-password" required class="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]" placeholder="Escribe tu contraseña"></div>
+                        <div><label for="admin_password" class="mb-1.5 block text-sm font-semibold text-slate-700">Contraseña de administrador</label><div class="relative"><input id="admin_password" type="password" x-bind:type="adminPasswordVisible ? 'text' : 'password'" name="admin_password" autocomplete="current-password" required class="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]" placeholder="Escribe tu contraseña"><button type="button" @click="adminPasswordVisible = !adminPasswordVisible" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 transition hover:text-[#4959A6]" x-bind:aria-label="adminPasswordVisible ? 'Ocultar contraseña de administrador' : 'Mostrar contraseña de administrador'" x-bind:title="adminPasswordVisible ? 'Ocultar contraseña de administrador' : 'Mostrar contraseña de administrador'" x-bind:aria-pressed="adminPasswordVisible"><x-icon name="eye" x-show="!adminPasswordVisible" class="h-5 w-5" /><x-icon name="eye-off" x-cloak x-show="adminPasswordVisible" class="h-5 w-5" /></button></div></div>
                         <div x-cloak x-show="success" x-transition class="rounded-xl border border-emerald-200 bg-emerald-50 p-4" role="status"><p class="font-semibold text-emerald-800">Credenciales temporales generadas</p><p class="mt-2 break-words text-sm text-emerald-900"><span class="font-bold">Usuario:</span> <span x-text="newUsername"></span></p><p class="mt-1 break-words text-sm text-emerald-900"><span class="font-bold">Contraseña:</span> <span x-text="newPassword"></span></p><p class="mt-3 text-xs text-emerald-700">Comunícale estos datos al titular. Deberá cambiar la contraseña al iniciar sesión.</p></div>
                         <p x-cloak x-show="error" x-text="error" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert"></p>
                         <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end"><button type="button" @click="closeRecover()" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Cerrar</button><button type="submit" :disabled="loading || success" class="inline-flex items-center justify-center rounded-xl bg-[#C0392B] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"><span x-show="!loading">Generar credenciales</span><span x-cloak x-show="loading">Procesando...</span></button></div>

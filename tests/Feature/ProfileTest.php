@@ -122,6 +122,33 @@ test('profile information can be updated', function () {
     $this->assertSame('Docente', $otherUser->docente->nombres);
 });
 
+test('a docente cannot update invalid personal names carnet or phone', function () {
+    $user = createProfileUser();
+
+    $this->followingRedirects()
+        ->actingAs($user)
+        ->from(route('profile.edit'))
+        ->patch(route('profile.update'), [
+            'username' => $user->username,
+            'nombres' => 'Nombre2',
+            'apellido_paterno' => $user->docente->apellido_paterno,
+            'apellido_materno' => $user->docente->apellido_materno,
+            'ci' => '12A45678',
+            'ci_extension' => 'LP',
+            'telefono' => '7000000',
+            'cargo' => $user->docente->cargo,
+        ])
+        ->assertOk()
+        ->assertSee('Por favor, introduzca los datos correctos.')
+        ->assertSee('El campo nombres solo puede contener letras y espacios.')
+        ->assertSee('El campo carnet de identidad debe contener entre 5 y 15 dígitos, sin letras ni separadores.')
+        ->assertSee('El campo teléfono debe contener exactamente 8 dígitos.');
+
+    expect($user->fresh()->docente->nombres)->not->toBe('Nombre2')
+        ->and($user->fresh()->docente->ci)->not->toBe('12A45678')
+        ->and($user->fresh()->docente->telefono)->not->toBe('7000000');
+});
+
 test('a docente can update their fecha de ingreso', function () {
     $user = createProfileUser();
 

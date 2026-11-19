@@ -7,7 +7,8 @@ test('confirm password screen can be rendered', function () {
 
     $response = $this->actingAs($user)->get('/confirm-password');
 
-    $response->assertStatus(200);
+    $response->assertStatus(200)
+        ->assertSee('Mostrar contraseña');
 });
 
 test('password can be confirmed', function () {

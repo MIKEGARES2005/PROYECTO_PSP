@@ -4,7 +4,7 @@
             @if ($fotoActualDisponible)
                 <img
                     x-show="!photoPreview"
-                    src="{{ request()->routeIs('estudiante.*') ? route('estudiante.profile.photo') : route('profile.photo') }}"
+                    src="{{ $fotoActualUrl ?? (request()->routeIs('estudiante.*') ? route('estudiante.profile.photo') : route('profile.photo')) }}"
                     alt="Fotografía personal actual"
                     class="h-full w-full object-cover"
                 >

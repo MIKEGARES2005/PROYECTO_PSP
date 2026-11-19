@@ -47,6 +47,7 @@ class User extends Authenticatable
             'bloqueos_consecutivos' => 'integer',
             'ultimo_acceso' => 'datetime',
             'deleted_at' => 'datetime',
+            'anonymized_at' => 'datetime',
         ];
     }
 

@@ -19,8 +19,8 @@
                 </div>
             @endif
 
-            <section class="grid gap-4 sm:grid-cols-3">
-                @foreach ([['label' => 'Estudiantes activos', 'value' => $totalActivos, 'color' => 'text-emerald-700', 'bg' => 'bg-emerald-50'], ['label' => 'Con seguimiento', 'value' => $totalConSeguimiento, 'color' => 'text-indigo-700', 'bg' => 'bg-indigo-50'], ['label' => 'Pendientes de seguimiento', 'value' => $totalPendientes, 'color' => 'text-amber-700', 'bg' => 'bg-amber-50']] as $estadistica)
+            <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                @foreach ([['label' => 'Estudiantes activos', 'value' => $totalActivos, 'color' => 'text-emerald-700', 'bg' => 'bg-emerald-50'], ['label' => 'Con eventos registrados', 'value' => $totalConSeguimiento, 'color' => 'text-indigo-700', 'bg' => 'bg-indigo-50'], ['label' => 'Pendientes de seguimiento', 'value' => $totalPendientes, 'color' => 'text-amber-700', 'bg' => 'bg-amber-50'], ['label' => 'Carrera congelada', 'value' => $totalCongelados, 'color' => 'text-orange-700', 'bg' => 'bg-orange-50'], ['label' => 'Egresados', 'value' => $totalEgresados, 'color' => 'text-violet-700', 'bg' => 'bg-violet-50']] as $estadistica)
                     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <span class="inline-flex rounded-xl {{ $estadistica['bg'] }} px-3 py-2 text-xs font-black uppercase tracking-wide {{ $estadistica['color'] }}">{{ $estadistica['label'] }}</span>
                         <p class="mt-4 text-3xl font-black {{ $estadistica['color'] }}">{{ $estadistica['value'] }}</p>
@@ -63,7 +63,9 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 sm:pl-0">
-                                <span class="rounded-full px-3 py-1 text-xs font-bold {{ $estudiante->estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : ($estudiante->estado === 'congelado' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600') }}">{{ ucfirst($estudiante->estado) }}</span>
+                                <span class="rounded-full px-3 py-1 text-xs font-bold {{ $estudiante->estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : ($estudiante->estado === 'congelado' ? 'bg-amber-50 text-amber-700' : ($estudiante->estado === 'egresado' ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600')) }}">
+                                    {{ $estudiante->estado === 'congelado' ? 'Congeló carrera · progreso pausado' : ($estudiante->estado === 'egresado' ? 'Egresado' : ucfirst($estudiante->estado)) }}
+                                </span>
                                 <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{{ $estudiante->historial_seguimiento_count }} evento(s)</span>
                                 <span class="text-lg font-black text-indigo-600 transition group-hover:translate-x-1">→</span>
                             </div>

@@ -27,11 +27,18 @@
         </div>
     @endif
 
+    <x-toast-push
+        type="error"
+        :message="$errors->any() ? 'Por favor, introduzca los datos correctos.' : null"
+    />
+
     <form
         method="post"
         action="{{ request()->routeIs('estudiante.*') ? route('estudiante.profile.update') : route('profile.update') }}"
         class="space-y-6"
         enctype="multipart/form-data"
+        data-profile-photo-draft-key="{{ $user->tipo_usuario }}-{{ $user->getKey() }}"
+        data-profile-photo-updated="{{ session('status') === 'profile-updated' ? 'true' : 'false' }}"
         x-data="{
             photoPreview: null,
             photoName: '',
@@ -85,22 +92,22 @@
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <x-input-label for="nombres" value="Nombres" />
-                            <x-text-input id="nombres" name="nombres" type="text" class="mt-1 block w-full" :value="old('nombres', $user->docente->nombres)" required autocomplete="given-name" />
+                            <x-text-input id="nombres" name="nombres" type="text" class="mt-1 block w-full" :value="old('nombres', $user->docente->nombres)" required maxlength="100" autocomplete="given-name" />
                             <x-input-error class="mt-2" :messages="$errors->get('nombres')" />
                         </div>
                         <div>
                             <x-input-label for="apellido_paterno" value="Apellido paterno" />
-                            <x-text-input id="apellido_paterno" name="apellido_paterno" type="text" class="mt-1 block w-full" :value="old('apellido_paterno', $user->docente->apellido_paterno)" required autocomplete="family-name" />
+                            <x-text-input id="apellido_paterno" name="apellido_paterno" type="text" class="mt-1 block w-full" :value="old('apellido_paterno', $user->docente->apellido_paterno)" required maxlength="100" autocomplete="family-name" />
                             <x-input-error class="mt-2" :messages="$errors->get('apellido_paterno')" />
                         </div>
                         <div>
                             <x-input-label for="apellido_materno" value="Apellido materno" />
-                            <x-text-input id="apellido_materno" name="apellido_materno" type="text" class="mt-1 block w-full" :value="old('apellido_materno', $user->docente->apellido_materno)" autocomplete="additional-name" />
+                            <x-text-input id="apellido_materno" name="apellido_materno" type="text" class="mt-1 block w-full" :value="old('apellido_materno', $user->docente->apellido_materno)" maxlength="100" autocomplete="additional-name" />
                             <x-input-error class="mt-2" :messages="$errors->get('apellido_materno')" />
                         </div>
                         <div>
                             <x-input-label for="ci" value="Carnet de identidad" />
-                            <x-text-input id="ci" name="ci" type="text" class="mt-1 block w-full" :value="old('ci', $user->docente->ci)" required />
+                            <x-text-input id="ci" name="ci" type="text" class="mt-1 block w-full" :value="old('ci', $user->docente->ci)" required inputmode="numeric" pattern="[0-9]{5,15}" minlength="5" maxlength="15" />
                             <x-input-error class="mt-2" :messages="$errors->get('ci')" />
                         </div>
                         <div>
@@ -127,7 +134,7 @@
                         </div>
                         <div>
                             <x-input-label for="telefono" value="Teléfono" />
-                            <x-text-input id="telefono" name="telefono" type="tel" class="mt-1 block w-full" :value="old('telefono', $user->docente->telefono)" autocomplete="tel" />
+                            <x-text-input id="telefono" name="telefono" type="tel" class="mt-1 block w-full" :value="old('telefono', $user->docente->telefono)" inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" autocomplete="tel" />
                             <x-input-error class="mt-2" :messages="$errors->get('telefono')" />
                         </div>
                         <div>
@@ -215,7 +222,7 @@
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <x-input-label for="telefono" value="Teléfono" />
-                            <x-text-input id="telefono" name="telefono" type="tel" class="mt-1 block w-full" :value="old('telefono', $user->estudiante->telefono)" autocomplete="tel" />
+                            <x-text-input id="telefono" name="telefono" type="tel" class="mt-1 block w-full" :value="old('telefono', $user->estudiante->telefono)" inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" autocomplete="tel" />
                             <x-input-error class="mt-2" :messages="$errors->get('telefono')" />
                         </div>
                         <div>
@@ -224,9 +231,10 @@
                             <x-input-error class="mt-2" :messages="$errors->get('correo_personal')" />
                         </div>
                         <div class="sm:col-span-2">
-                            <x-input-label for="direccion" value="Dirección" />
-                            <x-text-input id="direccion" name="direccion" type="text" class="mt-1 block w-full" :value="old('direccion', $user->estudiante->direccion)" autocomplete="street-address" />
-                            <x-input-error class="mt-2" :messages="$errors->get('direccion')" />
+                            <p class="text-sm font-medium text-gray-700">Dirección (opcional)</p>
+                            <div class="mt-2">
+                                <x-student-address-fields :address="$user->estudiante->direccion" />
+                            </div>
                         </div>
                         <div class="sm:col-span-2">
                             <x-input-label for="foto_personal" value="Fotografía personal" />

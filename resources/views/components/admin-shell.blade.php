@@ -4,6 +4,9 @@
     'notificacionesNoLeidas' => null,
 ])
 
+@if (auth()->user()->isDocente() && ! auth()->user()->isAdministrador())
+    <x-docente-layout>{{ $slot }}</x-docente-layout>
+@else
 @php
     $nombreUsuario = auth()->user()?->name ?? '';
     $inicial = strtoupper(substr($nombreUsuario, 0, 1));
@@ -21,6 +24,7 @@
         'creada' => $notificacion->created_at?->diffForHumans(),
     ])->values();
 @endphp
+    <x-admin-layout>
     <div
         class="min-h-screen bg-[#F4F7FC] text-slate-800"
         x-data="{
@@ -63,8 +67,8 @@
         x-init="refreshNotifications(); setInterval(() => refreshNotifications(), 15000)"
     >
         <div class="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
-            <div class="dashboard-orb dashboard-orb-blue absolute -left-48 -top-48 h-[32rem] w-[32rem] rounded-full blur-3xl"></div>
-            <div class="dashboard-orb dashboard-orb-cyan absolute -bottom-56 right-0 h-[34rem] w-[34rem] rounded-full blur-3xl"></div>
+            <div class="dashboard-orb dashboard-orb-blue absolute -left-48 -top-48 h-[32rem] w-[32rem] rounded-full blur-2xl"></div>
+            <div class="dashboard-orb dashboard-orb-cyan absolute -bottom-56 right-0 h-[34rem] w-[34rem] rounded-full blur-2xl"></div>
             <div class="dashboard-grid absolute inset-0 opacity-50"></div>
         </div>
 
@@ -96,7 +100,7 @@
                 </div>
             </div>
 
-            <nav class="dashboard-scrollbar relative flex-1 space-y-6 overflow-y-auto px-3 py-5">
+            <nav class="dashboard-scrollbar relative flex-1 space-y-6 overflow-y-auto px-3 py-5" x-init="$nextTick(() => { $el.scrollTop = Number(sessionStorage.getItem('itibb-navigation-scroll') || 0) })" @scroll.passive="sessionStorage.setItem('itibb-navigation-scroll', $el.scrollTop)">
                 <div>
                     <p class="mb-2 px-3 text-[10px] font-black uppercase tracking-[0.22em] text-indigo-300/70">Principal</p>
                     <a href="{{ route('dashboard') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition {{ request()->routeIs('dashboard') ? 'bg-white/10 text-white shadow-inner shadow-white/5 ring-1 ring-white/10' : 'text-indigo-100/70 hover:bg-white/5 hover:text-white' }}">
@@ -125,7 +129,7 @@
                                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
                                     <x-icon name="clipboard" class="h-4 w-4" />
                                 </span>
-                                <span>Solicitudes de registro</span>
+                                <span>Solicitudes</span>
                                 @if ($solicitudesPendientes > 0)
                                     <span class="ml-auto rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white shadow-sm">{{ $solicitudesPendientes > 99 ? '99+' : $solicitudesPendientes }}</span>
                                 @endif
@@ -171,24 +175,16 @@
                 </div>
 
                 <div>
-                    <div class="mb-2 flex items-center justify-between px-3">
+                    <div class="mb-2 px-3">
                         <p class="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-300/70">Operación</p>
-                        <span class="rounded-full bg-white/5 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-indigo-300/70 ring-1 ring-white/10">Solo lectura</span>
                     </div>
                     <div class="space-y-1">
-                        <button type="button" @click="inventoryOpen = !inventoryOpen" :aria-expanded="inventoryOpen" class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
+                        <a href="{{ route('inventario.index') }}" class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition {{ request()->routeIs('inventario.*') ? 'bg-white/10 text-white shadow-inner shadow-white/5 ring-1 ring-white/10' : 'text-indigo-100/70 hover:bg-white/5 hover:text-white' }}">
                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
                                 <x-icon name="inventory" class="h-4 w-4" />
                             </span>
                             <span>Inventario</span>
-                            <span class="ml-auto transition duration-200" :class="inventoryOpen ? 'rotate-180' : ''">
-                                <x-icon name="chevron-down" class="h-3.5 w-3.5" />
-                            </span>
-                        </button>
-                        <div x-cloak x-show="inventoryOpen" x-transition class="ml-6 space-y-1 border-l border-white/10 pl-3">
-                            <a href="{{ route('equipos.index') }}" class="block rounded-lg px-3 py-2 text-xs font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">Equipos</a>
-                            <a href="{{ route('accesorios.index') }}" class="block rounded-lg px-3 py-2 text-xs font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">Accesorios</a>
-                        </div>
+                        </a>
 
                         <a href="{{ route('asignaciones.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
@@ -218,11 +214,14 @@
                             <span>Diagnósticos</span>
                             </a>
                         @endif
-                        <a href="{{ route('reportes.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
+                        <a href="{{ route('reportes.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition {{ request()->routeIs('reportes.*') ? 'bg-white/10 text-white shadow-inner shadow-white/5 ring-1 ring-white/10' : 'text-indigo-100/70 hover:bg-white/5 hover:text-white' }}">
                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
                                 <x-icon name="report" class="h-4 w-4" />
                             </span>
                             <span>Reportes</span>
+                            @if (request()->routeIs('reportes.*'))
+                                <span class="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-300"></span>
+                            @endif
                         </a>
                     </div>
                 </div>
@@ -301,6 +300,8 @@
                             <span class="hidden lg:inline">Acceso estudiantil QR</span>
                         </button>
 
+                        <x-system-shutdown-control />
+
                         <div class="relative" @click.outside="profileOpen = false">
                             <button type="button" @click="profileOpen = !profileOpen" :aria-expanded="profileOpen" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 shadow-sm transition hover:border-indigo-200">
                                 <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 text-sm font-black text-white">{{ $inicial }}</span>
@@ -329,7 +330,7 @@
                             </div>
                         </div>
 
-                        <form method="POST" action="{{ route('logout') }}">
+                        <form method="POST" action="{{ route('logout') }}" data-logout-form="staff">
                             @csrf
                             <button type="submit" class="flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-100 bg-white px-3 text-sm font-bold text-rose-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700" aria-label="Cerrar sesión" title="Cerrar sesión">
                                 <x-icon name="logout" class="h-4 w-4" />
@@ -368,3 +369,5 @@
             {{ $slot }}
         </div>
     </div>
+    </x-admin-layout>
+@endif

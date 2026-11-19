@@ -19,21 +19,18 @@
                 </a>
             </header>
 
-            @if ($errors->any())
-                <div role="alert" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                    <p class="font-semibold">Revisa los datos ingresados:</p>
-                    <ul class="mt-2 list-inside list-disc">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
+            <x-toast-push
+                type="error"
+                :message="$errors->any() ? 'Por favor, introduzca los datos correctos.' : null"
+            />
 
             @php
                 $fotoActual = $perfil->foto_personal;
                 $fotoActualDisponible = $fotoActual
                     && \Illuminate\Support\Facades\Storage::disk('public')->exists($fotoActual);
+                $fotoActualUrl = $fotoActualDisponible
+                    ? route('usuarios.photo', $usuario->id)
+                    : null;
             @endphp
 
             <form
@@ -83,7 +80,7 @@
                         </div>
                         <div>
                             <label for="ci" class="mb-2 block text-sm font-semibold text-slate-700">Carnet de identidad</label>
-                            <input id="ci" name="ci" value="{{ old('ci', $perfil->ci) }}" required maxlength="20" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                            <input id="ci" name="ci" value="{{ old('ci', $perfil->ci) }}" required inputmode="numeric" pattern="[0-9]{5,15}" minlength="5" maxlength="15" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
                             @error('ci') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
                         </div>
                         <div>
@@ -98,7 +95,7 @@
                         </div>
                         <div>
                             <label for="telefono" class="mb-2 block text-sm font-semibold text-slate-700">Teléfono</label>
-                            <input id="telefono" name="telefono" type="tel" value="{{ old('telefono', $perfil->telefono) }}" maxlength="20" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                            <input id="telefono" name="telefono" type="tel" value="{{ old('telefono', $perfil->telefono) }}" inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
                             @error('telefono') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
                         </div>
                         @if (false)
@@ -151,9 +148,8 @@
                                 @error('correo_personal') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
                             </div>
                             <div class="sm:col-span-2">
-                                <label for="direccion" class="mb-2 block text-sm font-semibold text-slate-700">Dirección</label>
-                                <input id="direccion" name="direccion" value="{{ old('direccion', $perfil->direccion) }}" maxlength="255" autocomplete="street-address" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
-                                @error('direccion') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
+                                <p class="mb-2 text-sm font-semibold text-slate-700">Dirección (opcional)</p>
+                                <x-student-address-fields :address="$perfil->direccion" />
                             </div>
                         @else
                             <div>

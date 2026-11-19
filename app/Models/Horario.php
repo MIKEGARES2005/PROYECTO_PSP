@@ -35,6 +35,21 @@ class Horario extends Model
         'estado',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Horario $horario): void {
+            if ($horario->gestion_id === null || ! $horario->isDirty(['gestion_id', 'gestion'])) {
+                return;
+            }
+
+            $codigoGestion = Gestion::query()->whereKey($horario->gestion_id)->value('codigo');
+
+            if ($codigoGestion !== null) {
+                $horario->gestion = $codigoGestion;
+            }
+        });
+    }
+
     public function gestionAcademica(): BelongsTo
     {
         return $this->belongsTo(Gestion::class);

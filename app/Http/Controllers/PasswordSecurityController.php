@@ -6,6 +6,7 @@ use App\Models\PreguntaSeguridad;
 use App\Models\User;
 use App\Services\BitacoraService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -48,10 +49,23 @@ class PasswordSecurityController extends Controller
     /** Verificar el usuario únicamente dentro del flujo estudiantil. */
     public function verifyStudentUsername(Request $request): RedirectResponse
     {
-        $request->validate(['username' => ['required', 'string']]);
+        $request->validate(['username' => ['required', 'string', 'max:50']]);
 
-        $user = User::where('username', $request->input('username'))
-            ->where('tipo_usuario', 'estudiante')
+        $identificador = trim((string) $request->input('username'));
+        $matricula = mb_strtolower($identificador);
+
+        $user = User::query()
+            ->where(function (Builder $query) use ($identificador, $matricula): void {
+                $query->where(function (Builder $usernameQuery) use ($identificador): void {
+                    $usernameQuery->where('username', $identificador)
+                        ->where('tipo_usuario', 'estudiante');
+                })->orWhere(function (Builder $matriculaQuery) use ($matricula): void {
+                    $matriculaQuery->where('tipo_usuario', 'estudiante')
+                        ->whereHas('estudiante', function (Builder $studentQuery) use ($matricula): void {
+                            $studentQuery->whereRaw('LOWER(matricula) = ?', [$matricula]);
+                        });
+                });
+            })
             ->first();
         $preguntas = $user?->preguntasSeguridad()->orderBy('id')->get();
 
@@ -227,7 +241,7 @@ class PasswordSecurityController extends Controller
         $rutaLogin = $user->tipo_usuario === 'estudiante' ? 'estudiante.login' : 'login';
 
         return redirect()->route($rutaLogin)
-            ->with('status', 'Contraseña actualizada correctamente. Ya puedes iniciar sesión.');
+            ->with('status', 'Contraseña actualizada correctamente.');
     }
 
     private function usuarioDesdeSesion(Request $request): ?User

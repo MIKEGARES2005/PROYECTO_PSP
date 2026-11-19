@@ -1,5 +1,6 @@
 @php
     $esEstudiante = $user->tipo_usuario === 'estudiante';
+    $esDocente = $user->tipo_usuario === 'docente';
     $esAdministradorPuro = $user->tipo_usuario === 'administrador' && $user->docente === null;
     $perfilPersonal = $user->docente ?? $user->estudiante;
     $nombrePerfil = $user->nombreCompleto();
@@ -16,14 +17,20 @@
         ->join('');
     $cargoPerfil = $user->docente?->cargo
         ?? ($esEstudiante ? 'Estudiante · '.$user->estudiante?->matricula : null);
-    $contextoPerfil = $esEstudiante ? 'Portal del estudiante' : 'Administración';
+    $contextoPerfil = $esEstudiante ? 'Portal del estudiante' : ($esDocente ? 'Panel docente' : 'Administración');
     $tituloPerfil = $esAdministradorPuro ? 'Perfil del administrador' : 'Mi perfil';
+    $claseAcentoPerfil = $esEstudiante ? 'text-emerald-600' : ($esDocente ? 'text-sky-600' : 'text-indigo-500');
+    $claseHeroPerfil = $esEstudiante
+        ? 'bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 shadow-emerald-950/20'
+        : ($esDocente
+            ? 'bg-gradient-to-br from-[#1D74C9] via-[#145FAE] to-[#0C4387] shadow-sky-950/20'
+            : 'bg-gradient-to-br from-[#0B1226] via-[#1E2A5A] to-[#272F7A] shadow-indigo-950/20');
 @endphp
 
-<main class="mx-auto max-w-7xl space-y-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+<div class="mx-auto max-w-7xl space-y-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-            <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] {{ $esEstudiante ? 'text-emerald-600' : 'text-indigo-500' }}">
+            <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] {{ $claseAcentoPerfil }}">
                 <span>{{ $contextoPerfil }}</span>
                 <span class="text-slate-300">/</span>
                 <span>Mi cuenta</span>
@@ -35,19 +42,6 @@
                 Actualiza tus datos personales, la información de tu cuenta y la contraseña.
             </p>
         </div>
-        @if (! $esAdministrador)
-                <div class="flex flex-col gap-2 sm:flex-row">
-                    @if (! $esEstudiante && ! $esAdministrador)
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-bold text-rose-700 shadow-sm transition hover:bg-rose-50 sm:w-auto">
-                        <x-icon name="logout" class="h-4 w-4" />
-                        Cerrar sesión
-                    </button>
-                </form>
-            </div>
-        @endif
-        @endif
     </header>
 
     @if ($user->debe_cambiar_password)
@@ -57,7 +51,7 @@
         </div>
     @endif
 
-    <section class="dashboard-rise relative -mt-3 overflow-hidden rounded-3xl px-6 py-7 text-white shadow-2xl sm:-mt-2 sm:px-8 sm:py-8 {{ $esEstudiante ? 'bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 shadow-emerald-950/20' : 'bg-gradient-to-br from-[#0B1226] via-[#1E2A5A] to-[#272F7A] shadow-indigo-950/20' }}">
+    <section class="dashboard-rise relative -mt-3 overflow-hidden rounded-3xl px-6 py-7 text-white shadow-2xl sm:-mt-2 sm:px-8 sm:py-8 {{ $claseHeroPerfil }}">
         @if ($esEstudiante)
             <div class="absolute right-4 top-4 z-10 hidden sm:right-8 sm:top-8 sm:block">
                 <a href="{{ route('estudiante.dashboard') }}" class="inline-flex items-center justify-center rounded-xl border border-white/70 bg-white px-3 py-2 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50 sm:px-4 sm:py-2.5 sm:text-sm">
@@ -106,14 +100,16 @@
             <div class="flex items-start justify-between gap-4">
                 <div class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/25 bg-white/10 text-3xl font-black shadow-inner">
                     @if ($fotoPerfilDisponible)
-                        <img src="{{ $fotoPerfilUrl }}" alt="FotografÃ­a de {{ $nombrePerfil }}" class="h-full w-full object-cover">
+                        <img src="{{ $fotoPerfilUrl }}" alt="Fotografía de {{ $nombrePerfil }}" class="h-full w-full object-cover">
                     @else
                         {{ $inicialesPerfil ?: 'U' }}
                     @endif
                 </div>
-                <a href="{{ route('estudiante.dashboard') }}" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white px-3 py-2.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50">
-                    Volver al panel
-                </a>
+                @if ($esEstudiante)
+                    <a href="{{ route('estudiante.dashboard') }}" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white px-3 py-2.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50">
+                        Volver al panel
+                    </a>
+                @endif
             </div>
 
             <div class="min-w-0">
@@ -144,4 +140,4 @@
         </section>
 
     </div>
-</main>
+</div>

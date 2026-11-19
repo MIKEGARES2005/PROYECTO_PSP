@@ -134,6 +134,44 @@ test('students can manage their own security questions', function () {
     expect($user->preguntasSeguridad()->count())->toBe(3);
 });
 
+test('docentes and students can save multiword security questions', function () {
+    $docente = createSecurityQuestionUser('docente');
+    $estudiante = Estudiante::create([
+        'nombres' => 'Estudiante',
+        'apellido_paterno' => 'Preguntas',
+        'apellido_materno' => 'Espacios',
+        'matricula' => fake()->unique()->numerify('MAT#####'),
+        'semestre' => 1,
+        'ci' => fake()->unique()->numerify('########'),
+        'estado' => 'activo',
+    ]);
+    $studentUser = User::factory()->estudiante($estudiante)->create();
+    $preguntas = [
+        ['pregunta' => '¿Cuál es el nombre de mi primera mascota?', 'respuesta' => 'Luna'],
+        ['pregunta' => '¿En qué ciudad nací?', 'respuesta' => 'La Paz'],
+        ['pregunta' => '¿Cuál era mi materia favorita?', 'respuesta' => 'Historia'],
+    ];
+
+    $this->actingAs($docente)
+        ->put(route('security.questions.update'), [
+            'current_password' => 'password-segura',
+            'preguntas' => $preguntas,
+        ])
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($studentUser, 'student')
+        ->put(route('estudiante.security.questions.update'), [
+            'current_password' => 'password',
+            'preguntas' => $preguntas,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($docente->preguntasSeguridad()->orderBy('id')->value('pregunta'))
+        ->toBe('¿Cuál es el nombre de mi primera mascota?');
+    expect($studentUser->preguntasSeguridad()->orderBy('id')->value('pregunta'))
+        ->toBe('¿Cuál es el nombre de mi primera mascota?');
+});
+
 function createSecurityQuestionUser(string $tipoUsuario): User
 {
     $docente = Docente::create([

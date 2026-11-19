@@ -45,13 +45,15 @@
                 'Apellido paterno' => $registroPersonal->apellido_paterno,
                 'Apellido materno' => $registroPersonal->apellido_materno,
                 'Carnet de identidad' => trim($registroPersonal->ci.' '.($registroPersonal->ci_extension ?? '')),
-                'Matrícula' => $registroPersonal->matricula,
-                'Semestre' => $registroPersonal->semestre,
-                'Generación de ingreso' => $registroPersonal->generacion_ingreso,
                 'Teléfono' => $registroPersonal->telefono,
-                'Correo institucional' => $registroPersonal->correo_institucional,
                 'Correo personal' => $registroPersonal->correo_personal,
-                'DirecciÃ³n' => $registroPersonal->direccion,
+                'Matrícula' => $registroPersonal->matricula,
+                'Semestre' => $registroPersonal->semestre
+                    ? $registroPersonal->semestre.'° semestre'
+                    : null,
+                'Generación de ingreso' => $registroPersonal->generacion_ingreso,
+                'Correo institucional' => $registroPersonal->correo_institucional,
+                'Dirección' => $registroPersonal->direccion,
             ]
             : [
                 'Nombres' => $registroPersonal->nombres,
@@ -67,101 +69,333 @@
                     ? \Illuminate\Support\Carbon::parse($registroPersonal->fecha_ingreso)->format('d/m/Y')
                     : null,
             ];
-
-        $datosPerfil['Estado'] = $estadoCuenta;
     }
+
+    $filasPerfil = array_chunk($datosPerfil, 2, true);
 @endphp
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Plantilla de usuario - {{ $nombreMostrado }}</title>
+    <title>Antecedente de usuario | {{ $nombreMostrado }}</title>
     <style>
-        @page { margin: 28px 34px; }
+        @page {
+            margin: 1cm 1.5cm;
+        }
+
         * { box-sizing: border-box; }
-        body { margin: 0; color: #24304b; font-family: DejaVu Sans, sans-serif; font-size: 10px; }
-        .header { padding: 22px 24px; color: #ffffff; background: #111c3a; border-radius: 16px; }
-        .brand { color: #7ee7f5; font-size: 9px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
-        h1 { margin: 8px 0 3px; font-size: 22px; }
-        .subtitle { color: #c9d5f5; font-size: 10px; }
-        .profile { width: 100%; margin-top: 18px; padding: 18px; border: 1px solid #dbe3f0; border-radius: 16px; background: #ffffff; }
-        .profile-photo { width: 96px; height: 96px; border-radius: 14px; background: #e8effc; color: #272f7a; text-align: center; vertical-align: middle; font-size: 28px; font-weight: bold; }
-        .profile-photo img { width: 96px; height: 96px; border-radius: 14px; object-fit: cover; }
-        .profile-name { padding-left: 18px; vertical-align: middle; }
-        .eyebrow { color: #5969b3; font-size: 8px; font-weight: bold; letter-spacing: 1.4px; text-transform: uppercase; }
-        .profile-name h2 { margin: 6px 0; color: #17213d; font-size: 18px; }
-        .muted { color: #71809d; }
-        .badge { display: inline-block; margin-top: 5px; padding: 5px 9px; border-radius: 8px; color: #047857; background: #dff8ec; font-size: 9px; font-weight: bold; }
-        .badge-inactive { color: #b42318; background: #fde4e4; }
-        .section { margin-top: 16px; padding: 16px; border: 1px solid #dbe3f0; border-radius: 16px; }
-        .section-title { margin: 0 0 3px; color: #17213d; font-size: 13px; font-weight: bold; }
-        .section-subtitle { margin: 0 0 12px; color: #71809d; }
-        .account-cell, .data-cell { width: 33.333%; padding: 10px; border: 1px solid #e2e8f2; background: #f7f9fc; }
-        .data-cell { width: 50%; }
-        .cell-label { color: #8290a9; font-size: 8px; font-weight: bold; text-transform: uppercase; letter-spacing: .7px; }
-        .cell-value { margin-top: 5px; color: #26334e; font-size: 10px; font-weight: bold; }
-        .notice { margin-top: 16px; padding: 11px 14px; border: 1px solid #cdd8f6; border-radius: 12px; color: #4b5a78; background: #eef2ff; line-height: 1.5; }
-        .footer { margin-top: 20px; color: #91a0b9; font-size: 8px; text-align: right; }
+
+        body {
+            margin: 0;
+            color: #1e293b;
+            background: #ffffff;
+            font-family: "Helvetica", "Arial", sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .header-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 12px;
+            background: #0b1226;
+            margin-bottom: 14px;
+        }
+
+        .header-table td {
+            padding: 12px 14px;
+            vertical-align: middle;
+        }
+
+        .header-title {
+            font-size: 19px;
+            margin: 0;
+            color: #ffffff;
+            line-height: 1.25;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            margin: 4px 0 0;
+            color: #cbd5e1;
+        }
+
+        .header-right {
+            text-align: right;
+        }
+
+        .document-type {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 0;
+            color: #e0f2fe;
+            line-height: 1.4;
+        }
+
+        .section-title {
+            font-size: 15px;
+            color: #272f7a;
+            margin: 13px 0 6px;
+            text-transform: uppercase;
+            line-height: 1.3;
+        }
+
+        .section-subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 9px;
+            display: block;
+            line-height: 1.4;
+        }
+
+        .profile-header {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 12px;
+            background: #1e2a5a;
+            margin-bottom: 14px;
+        }
+
+        .photo-cell {
+            width: 170px;
+            vertical-align: middle;
+            padding: 14px;
+        }
+
+        .photo-img {
+            width: 140px;
+            height: 140px;
+            border: 3px solid #ffffff;
+            border-radius: 14px;
+            object-fit: cover;
+        }
+
+        .photo-placeholder {
+            width: 140px;
+            height: 140px;
+            border: 3px solid #ffffff;
+            border-radius: 14px;
+            background: #e5eaff;
+            color: #272f7a;
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 140px;
+        }
+
+        .profile-info {
+            vertical-align: middle;
+            padding: 14px 14px 14px 0;
+            color: #ffffff;
+        }
+
+        .profile-name {
+            font-size: 26px;
+            margin: 0 0 8px;
+            color: #ffffff;
+            line-height: 1.3;
+        }
+
+        .account-summary {
+            width: 90%;
+            border-collapse: separate;
+            border-spacing: 3px 0;
+            margin: 0;
+        }
+
+        .account-summary-cell {
+            width: 33.333%;
+            padding: 4px 5px;
+            border: 1px solid #4959a6;
+            border-radius: 5px;
+            background: #272f7a;
+            vertical-align: top;
+        }
+
+        .account-summary-label {
+            display: inline;
+            margin-right: 3px;
+            color: #c7d2fe;
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .account-summary-value {
+            display: inline;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: bold;
+            line-height: 1.35;
+            word-wrap: break-word;
+        }
+
+        .account-summary-active {
+            border-color: #34d399;
+            background: #065f46;
+        }
+
+        .account-summary-active .account-summary-label {
+            color: #a7f3d0;
+        }
+
+        .account-summary-inactive {
+            border-color: #fda4af;
+            background: #881337;
+        }
+
+        .account-summary-inactive .account-summary-label {
+            color: #fecdd3;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 7px 6px;
+            margin-bottom: 9px;
+        }
+
+        .data-table td {
+            width: 50%;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            vertical-align: top;
+        }
+
+        .data-label {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }
+
+        .data-value {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            color: #1e293b;
+            line-height: 1.45;
+            word-wrap: break-word;
+        }
+
+        .empty-profile {
+            margin-top: 9px;
+            padding: 10px 12px;
+            color: #865b12;
+            background: #fff8e8;
+            font-size: 13px;
+            border-left: 3px solid #d9a036;
+            line-height: 1.45;
+        }
+
+        .notice {
+            margin-top: 14px;
+            padding: 10px 12px;
+            color: #4b5872;
+            background: #eef8fa;
+            font-size: 12px;
+            border-left: 3px solid #27a9bd;
+            line-height: 1.45;
+        }
+
+        .footer {
+            width: 100%;
+            margin-top: 12px;
+            padding-top: 7px;
+            border-top: 1px solid #ddd;
+            color: #777;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .footer-right {
+            text-align: right;
+        }
+
+        .section-separator {
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="brand">ITIBB · Centro de control</div>
-        <h1>Plantilla de usuario</h1>
-        <div class="subtitle">Ficha oficial de cuenta y datos personales</div>
-    </div>
-
-    <table class="profile" cellspacing="0" cellpadding="0">
+    <table class="header-table">
         <tr>
-            <td class="profile-photo">
-                @if ($fotoDataUri)
-                    <img src="{{ $fotoDataUri }}" alt="Fotografía de {{ $nombreMostrado }}">
-                @else
-                    {{ $iniciales ?: 'U' }}
-                @endif
+            <td width="60%">
+                <h1 class="header-title">ITIBB CENTRO DE CONTROL</h1>
+                <p class="header-subtitle">Plantilla de usuario</p>
             </td>
-            <td class="profile-name">
-                <div class="eyebrow">Perfil de usuario</div>
-                <h2>{{ $nombreMostrado }}</h2>
-                <div class="muted">{{ '@'.$usuario->username }} · {{ ucfirst($usuario->tipo_usuario ?? 'No definido') }}</div>
-                <span class="badge {{ $perfilActivo ? '' : 'badge-inactive' }}">{{ $estadoCuenta }}</span>
+            <td width="40%" class="header-right">
+                <p class="document-type">Ficha oficial de datos personales</p>
             </td>
         </tr>
     </table>
 
-    <div class="section">
-        <h2 class="section-title">Información de la cuenta</h2>
-        <p class="section-subtitle">Datos asociados al acceso al sistema.</p>
-        <table width="100%" cellspacing="6" cellpadding="0">
-            <tr>
-                <td class="account-cell"><div class="cell-label">Nombre de usuario</div><div class="cell-value">{{ $usuario->username ?: 'No registrado' }}</div></td>
-                <td class="account-cell"><div class="cell-label">Tipo de usuario</div><div class="cell-value">{{ ucfirst($usuario->tipo_usuario ?? 'No definido') }}</div></td>
-                <td class="account-cell"><div class="cell-label">Última actualización</div><div class="cell-value">{{ $usuario->updated_at?->format('d/m/Y H:i') ?? 'No disponible' }}</div></td>
-            </tr>
-        </table>
-    </div>
-
-    @if ($datosPerfil)
-        <div class="section">
-            <h2 class="section-title">Información del {{ $usuario->tipo_usuario === 'estudiante' ? 'estudiante' : 'docente' }}</h2>
-            <p class="section-subtitle">Datos personales y registrados en el sistema.</p>
-            <table width="100%" cellspacing="6" cellpadding="0">
-                @foreach (array_chunk($datosPerfil, 2, true) as $fila)
+    <table class="profile-header">
+        <tr>
+            <td class="photo-cell">
+                @if ($fotoDataUri)
+                    <img src="{{ $fotoDataUri }}" class="photo-img" alt="Fotografía de {{ $nombreMostrado }}">
+                @else
+                    <div class="photo-placeholder">{{ $iniciales ?: 'U' }}</div>
+                @endif
+            </td>
+            <td class="profile-info">
+                <h3 class="profile-name">{{ $nombreMostrado }}</h3>
+                <table class="account-summary">
                     <tr>
-                        @foreach ($fila as $etiqueta => $valor)
-                            <td class="data-cell"><div class="cell-label">{{ $etiqueta }}</div><div class="cell-value">{{ $valor ?: 'No registrado' }}</div></td>
-                        @endforeach
-                        @if (count($fila) === 1)
-                            <td class="data-cell" style="border-color: transparent; background: transparent;"></td>
-                        @endif
+                        <td class="account-summary-cell">
+                            <span class="account-summary-label">USUARIO:</span>
+                            <span class="account-summary-value">{{ $usuario->username ?: 'No registrado' }}</span>
+                        </td>
+                        <td class="account-summary-cell">
+                            <span class="account-summary-label">TIPO:</span>
+                            <span class="account-summary-value">{{ ucfirst($usuario->tipo_usuario ?? 'No definido') }}</span>
+                        </td>
+                        <td class="account-summary-cell {{ $perfilActivo ? 'account-summary-active' : 'account-summary-inactive' }}">
+                            <span class="account-summary-label">ESTADO:</span>
+                            <span class="account-summary-value">{{ $estadoCuenta }}</span>
+                        </td>
                     </tr>
-                @endforeach
-            </table>
-        </div>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    @if ($filasPerfil)
+        <h2 class="section-title section-separator">Información personal</h2>
+        <span class="section-subtitle">Datos personales, académicos y de contacto registrados.</span>
+        <table class="data-table">
+            @foreach ($filasPerfil as $fila)
+                <tr>
+                    @foreach ($fila as $etiqueta => $valor)
+                        <td @if (count($fila) === 1) colspan="2" @endif>
+                            <span class="data-label">{{ $etiqueta }}</span>
+                            <span class="data-value">{{ $valor ?: '-' }}</span>
+                        </td>
+                    @endforeach
+                </tr>
+            @endforeach
+        </table>
+    @else
+        <div class="empty-profile">Esta cuenta todavía no tiene un registro personal asociado.</div>
     @endif
 
     <div class="notice"><strong>Seguridad:</strong> las contraseñas y las respuestas a las preguntas de seguridad no se muestran por este medio.</div>
-    <div class="footer">Documento generado desde el Centro de control ITIBB · {{ now()->format('d/m/Y H:i') }}</div>
+
+    <table class="footer">
+        <tr>
+            <td width="50%">Documento generado desde el Centro de control ITIBB</td>
+            <td width="50%" class="footer-right">Emitido el {{ now()->format('d/m/Y H:i') }}</td>
+        </tr>
+    </table>
 </body>
 </html>

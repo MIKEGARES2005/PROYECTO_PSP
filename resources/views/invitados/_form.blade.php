@@ -2,16 +2,10 @@
     $esEdicion = isset($invitado) && $invitado?->exists;
 @endphp
 
-@if ($errors->any())
-    <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-        <p class="font-bold">Revisa los datos del formulario.</p>
-        <ul class="mt-2 list-inside list-disc space-y-1">
-            @foreach ($errors->all() as $error)
-                <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-@endif
+<x-toast-push
+    type="error"
+    :message="$errors->any() ? 'Por favor, introduzca los datos correctos.' : null"
+/>
 
 <form method="POST" action="{{ $formAction }}" class="space-y-6">
     @csrf
@@ -32,22 +26,27 @@
                         <option value="{{ $valor }}" @selected(old('tipo', $invitado?->tipo ?? 'externo') === $valor)>{{ $etiqueta }}</option>
                     @endforeach
                 </select>
+                @error('tipo') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="nombres" class="mb-2 block text-sm font-semibold text-slate-700">Nombres</label>
                 <input id="nombres" name="nombres" value="{{ old('nombres', $invitado?->nombres) }}" required maxlength="100" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('nombres') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="apellido_paterno" class="mb-2 block text-sm font-semibold text-slate-700">Apellido paterno</label>
                 <input id="apellido_paterno" name="apellido_paterno" value="{{ old('apellido_paterno', $invitado?->apellido_paterno) }}" required maxlength="100" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('apellido_paterno') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="apellido_materno" class="mb-2 block text-sm font-semibold text-slate-700">Apellido materno</label>
                 <input id="apellido_materno" name="apellido_materno" value="{{ old('apellido_materno', $invitado?->apellido_materno) }}" maxlength="100" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('apellido_materno') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="ci" class="mb-2 block text-sm font-semibold text-slate-700">Carnet de identidad</label>
-                <input id="ci" name="ci" value="{{ old('ci', $invitado?->ci) }}" required maxlength="20" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                <input id="ci" name="ci" value="{{ old('ci', $invitado?->ci) }}" required inputmode="numeric" pattern="[0-9]{5,15}" minlength="5" maxlength="15" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('ci') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="ci_extension" class="mb-2 block text-sm font-semibold text-slate-700">Extensión del CI</label>
@@ -57,23 +56,27 @@
                         <option value="{{ $extension }}" @selected(old('ci_extension', $invitado?->ci_extension) === $extension)>{{ $departamento }} ({{ $extension }})</option>
                     @endforeach
                 </select>
+                @error('ci_extension') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="telefono" class="mb-2 block text-sm font-semibold text-slate-700">Teléfono</label>
-                <input id="telefono" name="telefono" value="{{ old('telefono', $invitado?->telefono) }}" maxlength="20" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                <input id="telefono" name="telefono" type="tel" value="{{ old('telefono', $invitado?->telefono) }}" inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('telefono') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="semestre" class="mb-2 block text-sm font-semibold text-slate-700">Semestre</label>
                 <select id="semestre" name="semestre" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
                     <option value="">No aplica</option>
-                    @foreach (range(1, 4) as $semestre)
+                    @foreach (range(1, 6) as $semestre)
                         <option value="{{ $semestre }}" @selected((string) old('semestre', $invitado?->semestre) === (string) $semestre)>{{ $semestre }}° semestre</option>
                     @endforeach
                 </select>
+                @error('semestre') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="procedencia" class="mb-2 block text-sm font-semibold text-slate-700">Procedencia</label>
                 <input id="procedencia" name="procedencia" value="{{ old('procedencia', $invitado?->procedencia) }}" maxlength="150" placeholder="Institución o procedencia" class="w-full rounded-xl border-slate-300 px-4 py-3 text-sm focus:border-[#4959A6] focus:ring-[#4959A6]">
+                @error('procedencia') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label for="estado" class="mb-2 block text-sm font-semibold text-slate-700">Estado</label>
@@ -81,6 +84,7 @@
                     <option value="activo" @selected(old('estado', $invitado?->estado ?? 'activo') === 'activo')>Activo</option>
                     <option value="inactivo" @selected(old('estado', $invitado?->estado) === 'inactivo')>Inactivo</option>
                 </select>
+                @error('estado') <p class="mt-2 text-sm text-red-600">{{ $message }}</p> @enderror
             </div>
         </div>
     </section>

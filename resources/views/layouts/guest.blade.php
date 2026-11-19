@@ -20,11 +20,15 @@
     class="min-h-screen bg-slate-950 antialiased selection:bg-cyan-400/30 selection:text-white"
     style="font-family: 'Manrope', sans-serif;"
 >
+    @if (session('logged_out_portal') === 'staff')
+        <script>sessionStorage.setItem('system-logged-out-portal', 'staff');</script>
+    @endif
+
     <div class="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950">
         {{-- Fondo decorativo --}}
         <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl"></div>
-            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-indigo-500/20 blur-3xl"></div>
+            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-500/15 blur-2xl"></div>
+            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-indigo-500/20 blur-2xl"></div>
             <div class="login-grid absolute inset-0 opacity-50"></div>
         </div>
 
@@ -34,8 +38,8 @@
                     {{-- Identidad del sistema --}}
                     <section class="relative min-w-0 overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 px-6 py-8 text-white sm:px-9 lg:min-h-[500px] lg:px-10 lg:py-10">
                         <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-                            <div class="login-orb absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl"></div>
-                            <div class="login-orb login-orb-delayed absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-indigo-500/20 blur-3xl"></div>
+                            <div class="login-orb absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-2xl"></div>
+                            <div class="login-orb login-orb-delayed absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-indigo-500/20 blur-2xl"></div>
                             <div class="login-grid absolute inset-0 opacity-40"></div>
                         </div>
 

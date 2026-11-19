@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Notificacion;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -54,7 +55,7 @@ class StudentNotificationController extends Controller
         ]);
     }
 
-    public function clear(Request $request): JsonResponse
+    public function clear(Request $request): JsonResponse|RedirectResponse
     {
         Notificacion::query()
             ->where('user_id', $request->user('student')->id)
@@ -77,6 +78,10 @@ class StudentNotificationController extends Controller
     private function notificationSummary(Notificacion $notificacion): string
     {
         $contexto = mb_strtolower($notificacion->tipo.' '.$notificacion->titulo);
+
+        if ($notificacion->tipo === 'recuperacion_aprobada') {
+            return 'Recuperación aprobada';
+        }
 
         if (str_contains($contexto, 'solicitud') && (str_contains($contexto, 'acept') || str_contains($contexto, 'aprob'))) {
             return 'Solicitud aceptada';

@@ -77,6 +77,11 @@ class Asignacion extends Model
         return $this->belongsTo(Equipo::class);
     }
 
+    public function complemento(): BelongsTo
+    {
+        return $this->belongsTo(Complemento::class);
+    }
+
     public function autorizadoPor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'autorizado_por');

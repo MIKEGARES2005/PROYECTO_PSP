@@ -118,6 +118,10 @@ test('docentes only see matching assignments from their own schedules and select
             'buscar' => 'Laptop',
             'estado' => 'activa',
         ]))
+        ->assertSeeText('Asignaciones y préstamos')
+        ->assertSeeText('Nueva asignación')
+        ->assertSeeText('Crear un nuevo préstamo')
+        ->assertDontSeeText('Volver al dashboard')
         ->assertSeeText('EQ-PROPIO-001')
         ->assertSeeText('Activa')
         ->assertDontSeeText('Estudiante Historico')

@@ -26,6 +26,7 @@
                 autofocus
                 autocomplete="username"
             />
+            <x-input-error :messages="$errors->get('username')" class="mt-2" />
         </div>
 
         <x-primary-button class="h-12 w-full max-w-none justify-center bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800">

@@ -11,6 +11,20 @@ class Gestion extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $gestion): void {
+            if ($gestion->activa) {
+                self::query()
+                    ->whereKeyNot($gestion->getKey())
+                    ->where('activa', true)
+                    ->update(['activa' => false]);
+
+                ConfiguracionAcademica::actualizarGestionVigente($gestion->codigo);
+            }
+        });
+    }
+
     protected $table = 'gestiones';
 
     protected $fillable = [
@@ -49,8 +63,7 @@ class Gestion extends Model
 
     public static function activa(): ?self
     {
-        return self::query()->where('activa', true)->first()
-            ?? self::query()->orderByDesc('anio')->orderByDesc('periodo')->first();
+        return self::query()->where('activa', true)->first();
     }
 
     public static function vigente(): ?self

@@ -25,10 +25,10 @@
         $saludo = now()->hour < 12 ? 'Buenos días' : (now()->hour < 19 ? 'Buenas tardes' : 'Buenas noches');
     @endphp
 
-    <div class="min-h-screen bg-[#F4F7FC] text-slate-800" x-data="{ sidebarOpen: false, notificationsOpen: false, profileOpen: false, inventoryOpen: false, qrOpen: false, clearNotifications() { fetch('{{ route('admin.notifications.clear') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' } }).then(() => window.location.reload()).catch(() => {}); } }">
+    <div class="min-h-screen bg-[#F4F7FC] text-slate-800" x-data="{ sidebarOpen: false, notificationsOpen: false, profileOpen: false, inventoryOpen: false, qrOpen: false, purgePolicyOpen: false, clearNotifications() { fetch('{{ route('admin.notifications.clear') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' } }).then(() => window.location.reload()).catch(() => {}); } }">
         <div class="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
-            <div class="dashboard-orb dashboard-orb-blue absolute -left-48 -top-48 h-[32rem] w-[32rem] rounded-full blur-3xl"></div>
-            <div class="dashboard-orb dashboard-orb-cyan absolute -bottom-56 right-0 h-[34rem] w-[34rem] rounded-full blur-3xl"></div>
+            <div class="dashboard-orb dashboard-orb-blue absolute -left-48 -top-48 h-[32rem] w-[32rem] rounded-full blur-2xl"></div>
+            <div class="dashboard-orb dashboard-orb-cyan absolute -bottom-56 right-0 h-[34rem] w-[34rem] rounded-full blur-2xl"></div>
             <div class="dashboard-grid absolute inset-0 opacity-50"></div>
         </div>
 
@@ -60,7 +60,7 @@
                 </div>
             </div>
 
-            <nav class="dashboard-scrollbar relative flex-1 space-y-6 overflow-y-auto px-3 py-5">
+            <nav class="dashboard-scrollbar relative flex-1 space-y-6 overflow-y-auto px-3 py-5" x-init="$nextTick(() => { $el.scrollTop = Number(sessionStorage.getItem('itibb-navigation-scroll') || 0) })" @scroll.passive="sessionStorage.setItem('itibb-navigation-scroll', $el.scrollTop)">
                 <div>
                     <p class="mb-2 px-3 text-[10px] font-black uppercase tracking-[0.22em] text-indigo-300/70">Principal</p>
                     <a href="{{ route('dashboard') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition {{ request()->routeIs('dashboard') ? 'bg-white/10 text-white shadow-inner shadow-white/5 ring-1 ring-white/10' : 'text-indigo-100/70 hover:bg-white/5 hover:text-white' }}">
@@ -131,24 +131,16 @@
                 </div>
 
                 <div>
-                    <div class="mb-2 flex items-center justify-between px-3">
+                    <div class="mb-2 px-3">
                         <p class="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-300/70">Operación</p>
-                        <span class="rounded-full bg-white/5 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-indigo-300/70 ring-1 ring-white/10">Solo lectura</span>
                     </div>
                     <div class="space-y-1">
-                        <button type="button" @click="inventoryOpen = !inventoryOpen" :aria-expanded="inventoryOpen" class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
+                        <a href="{{ route('inventario.index') }}" class="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
                                 <x-icon name="inventory" class="h-4 w-4" />
                             </span>
                             <span>Inventario</span>
-                            <span class="ml-auto transition duration-200" :class="inventoryOpen ? 'rotate-180' : ''">
-                                <x-icon name="chevron-down" class="h-3.5 w-3.5" />
-                            </span>
-                        </button>
-                        <div x-cloak x-show="inventoryOpen" x-transition class="ml-6 space-y-1 border-l border-white/10 pl-3">
-                            <a href="{{ route('equipos.index') }}" class="block rounded-lg px-3 py-2 text-xs font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">Equipos</a>
-                            <a href="{{ route('accesorios.index') }}" class="block rounded-lg px-3 py-2 text-xs font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">Accesorios</a>
-                        </div>
+                        </a>
 
                         <a href="{{ route('asignaciones.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-indigo-100/70 transition hover:bg-white/5 hover:text-white">
                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-cyan-300 ring-1 ring-white/10 transition group-hover:bg-cyan-400/10 group-hover:text-cyan-200">
@@ -250,6 +242,16 @@
 
                         <button
                             type="button"
+                            @click="purgePolicyOpen = true"
+                            class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700"
+                            aria-label="Política de purgado del sistema"
+                            title="Política de purgado del sistema"
+                        >
+                            <span class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-current text-xs font-black">?</span>
+                        </button>
+
+                        <button
+                            type="button"
                             @click="qrOpen = true"
                             class="group flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-100 bg-white px-3 text-sm font-bold text-cyan-700 shadow-sm transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
                             aria-label="Abrir acceso estudiantil QR"
@@ -258,6 +260,8 @@
                             <x-icon name="qr-code" class="h-4 w-4 transition group-hover:scale-110" />
                             <span class="hidden lg:inline">Acceso estudiantil QR</span>
                         </button>
+
+                        <x-system-shutdown-control />
 
                         <div class="relative" @click.outside="profileOpen = false">
                             <button type="button" @click="profileOpen = !profileOpen" :aria-expanded="profileOpen" class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 shadow-sm transition hover:border-indigo-200">
@@ -285,7 +289,7 @@
                             </div>
                         </div>
 
-                        <form method="POST" action="{{ route('logout') }}">
+                        <form method="POST" action="{{ route('logout') }}" data-logout-form="staff">
                             @csrf
                             <button type="submit" class="flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-100 bg-white px-3 text-sm font-bold text-rose-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700" aria-label="Cerrar sesión" title="Cerrar sesión">
                                 <x-icon name="logout" class="h-4 w-4" />
@@ -318,6 +322,64 @@
                         </button>
                     </div>
                     <iframe src="{{ route('estudiante.qr', ['embed' => 1]) }}" title="Código QR de acceso al portal estudiantil" class="min-h-0 flex-1 w-full border-0 bg-slate-950"></iframe>
+                </div>
+            </div>
+
+            <div
+                x-cloak
+                x-show="purgePolicyOpen"
+                x-transition.opacity
+                @keydown.escape.window="purgePolicyOpen = false"
+                class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm sm:p-6"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="admin-purge-policy-title"
+                @click.self="purgePolicyOpen = false"
+            >
+                <div x-show="purgePolicyOpen" x-transition class="flex max-h-[min(90vh,850px)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                    <div class="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 px-5 py-4 text-white sm:px-7">
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.25em] text-cyan-300">Administración y conservación</p>
+                            <h2 id="admin-purge-policy-title" class="mt-1 text-lg font-black sm:text-xl">Política de purgado del sistema</h2>
+                        </div>
+                        <button type="button" @click="purgePolicyOpen = false" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Cerrar política de purgado">
+                            <x-icon name="x" class="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    <div class="dashboard-scrollbar space-y-5 overflow-y-auto p-5 text-sm text-slate-600 sm:p-7">
+                        <div class="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                            <p class="font-black text-indigo-950">Ejecución automática diaria · 02:00 (Bolivia)</p>
+                            <p class="mt-1 leading-6">El servidor debe ejecutar <code class="rounded bg-white px-1.5 py-0.5 text-xs text-indigo-800">php artisan schedule:run</code> cada minuto para que esta tarea programada se ejecute.</p>
+                        </div>
+
+                        <section>
+                            <h3 class="font-black text-slate-900">Datos que se limpian automáticamente</h3>
+                            <ul class="mt-2 list-disc space-y-2 pl-5 leading-6">
+                                <li><strong>Sesiones y caché:</strong> se eliminan las sesiones inactivas al vencer el límite configurado de {{ (int) config('session.lifetime', 120) }} minutos; las entradas de caché y los bloqueos se eliminan al expirar.</li>
+                                <li><strong>Notificaciones:</strong> las leídas se purgan después de {{ (int) config('retention.notifications.read_after_days', 5) }} días; las no leídas se conservan mientras la cuenta siga activa.</li>
+                                <li><strong>Perfiles dados de baja:</strong> son restaurables durante {{ (int) config('retention.users.deletion_grace_period_days', 2) }} días; el administrador puede finalizar la eliminación antes. Al finalizar se anonimizan los datos del sistema y se eliminan sesiones, preguntas de seguridad, notificaciones y fotografías. El PDF original, que contiene datos personales, se conserva indefinidamente junto con los registros académicos y operativos.</li>
+                                <li><strong>Reportes generados:</strong> al vencer, se conservan 30 días de gracia; después se elimina el archivo guardado y su registro.</li>
+                                <li><strong>Códigos QR:</strong> se eliminan 30 días después de su vencimiento o de haber sido desactivados.</li>
+                            </ul>
+                        </section>
+
+                        <section class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                            <h3 class="font-black text-amber-950">Telemetría: depuración pendiente</h3>
+                            <p class="mt-1 leading-6 text-amber-900">Los heartbeats crudos y sus resúmenes no se purgan automáticamente. Conservar 90 días de datos crudos es una meta aún no implementada; primero debe generarse y validarse el resumen horario.</p>
+                        </section>
+
+                        <section>
+                            <h3 class="font-black text-slate-900">Datos sin purga automática</h3>
+                            <ul class="mt-2 list-disc space-y-2 pl-5 leading-6">
+                                <li><strong>Perfiles activos e inventario:</strong> <code>users</code>, <code>docentes</code>, <code>estudiantes</code>, <code>invitados</code>, <code>activos</code>, <code>equipos</code>, <code>categorias</code>, <code>complementos</code> y <code>equipo_complemento</code>. Los perfiles dados de baja siguen el proceso de anonimización descrito arriba.</li>
+                                <li><strong>Configuración académica:</strong> <code>materias</code>, <code>gestiones</code>, <code>configuracion_academica</code> y <code>horarios</code>. Las preguntas de seguridad se eliminan al anonimizar una cuenta.</li>
+                                <li><strong>Operación e historial académico:</strong> <code>solicitudes_registro</code>, <code>solicitudes</code>, <code>solicitud_integrantes</code>, <code>asignaciones</code>, <code>asignacion_checklist</code>, <code>inscripciones</code>, <code>inscripciones_archivadas</code>, <code>historial_seguimiento_estudiantes</code>, <code>incidencias</code>, <code>alertas</code> y <code>diagnosticos</code>.</li>
+                                <li><strong>Bitácora:</strong> no se purga ni archiva automáticamente. La referencia configurada de {{ (int) config('retention.bitacora.period_months', 6) }} meses todavía no se aplica; requiere validar y archivar el reporte del periodo antes de cualquier purga.</li>
+                                <li><strong>Colas:</strong> esta tarea no purga <code>jobs</code>, <code>job_batches</code> ni <code>failed_jobs</code>; su limpieza depende del flujo de colas.</li>
+                            </ul>
+                        </section>
+                    </div>
                 </div>
             </div>
 

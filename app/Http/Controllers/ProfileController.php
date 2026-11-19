@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\User;
 use App\Services\BitacoraService;
+use App\Support\DireccionEstudiante;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Throwable;
 
 class ProfileController extends Controller
 {
@@ -45,81 +47,97 @@ class ProfileController extends Controller
         $validated = $request->validated();
         $nuevaFoto = $request->file('foto_personal');
         $usernameAnterior = $user->username;
+        $perfil = $user->docente ?? $user->estudiante;
+        $fotoAnterior = $perfil?->foto_personal;
+        $datosPerfil = [];
 
         if ($user->docente !== null) {
-            $docente = $user->docente;
-            $fotoAnterior = $docente->foto_personal;
-            $datosDocente = Arr::only($validated, [
+            $datosPerfil = Arr::only($validated, [
                 'nombres', 'apellido_paterno', 'apellido_materno',
                 'ci', 'ci_extension', 'telefono', 'correo_personal',
                 'cargo', 'especialidad', 'nivel_academico', 'fecha_ingreso',
             ]);
-
-            if ($nuevaFoto !== null) {
-                $rutaFoto = $nuevaFoto->store('fotos/docentes', 'public');
-                if ($rutaFoto === false) {
-                    return back()->withErrors(['foto_personal' => 'No se pudo guardar la fotografía.']);
-                }
-                $datosDocente['foto_personal'] = $rutaFoto;
-            }
-
-            $antes = $docente->only(array_keys($datosDocente));
-            DB::transaction(fn () => $docente->update($datosDocente));
-
-            if ($nuevaFoto !== null && $fotoAnterior !== null) {
-                Storage::disk('public')->delete($fotoAnterior);
-            }
-
-            BitacoraService::registrar('actualizar_perfil_docente', 'docentes', $docente->id, $antes, $datosDocente);
         } elseif ($user->estudiante !== null) {
-            $estudiante = $user->estudiante;
-            $fotoAnterior = $estudiante->foto_personal;
-            $datosEstudiante = Arr::only($validated, [
+            $datosPerfil = Arr::only($validated, [
                 'telefono', 'correo_personal', 'direccion',
             ]);
-
-            if ($nuevaFoto !== null) {
-                $rutaFoto = $nuevaFoto->store('fotos/estudiantes', 'public');
-                if ($rutaFoto === false) {
-                    return back()->withErrors(['foto_personal' => 'No se pudo guardar la fotografía.']);
-                }
-                $datosEstudiante['foto_personal'] = $rutaFoto;
-            }
-
-            $antes = $estudiante->only(array_keys($datosEstudiante));
-            DB::transaction(fn () => $estudiante->update($datosEstudiante));
-
-            if ($nuevaFoto !== null && $fotoAnterior !== null) {
-                Storage::disk('public')->delete($fotoAnterior);
-            }
-
-            BitacoraService::registrar('actualizar_perfil_estudiante', 'estudiantes', $estudiante->id, $antes, $datosEstudiante);
-        }
-
-        $usernameNuevo = $validated['username'] ?? $usernameAnterior;
-
-        if ($usernameNuevo !== $usernameAnterior) {
-            $user->update(['username' => $usernameNuevo]);
-
-            BitacoraService::registrar(
-                'actualizar_username',
-                'users',
-                $user->id,
-                ['username' => $usernameAnterior],
-                ['username' => $user->username],
+            $datosPerfil['direccion'] = DireccionEstudiante::desdeDatos(
+                $validated,
+                $validated['direccion'] ?? null,
             );
         }
 
-        if ($request->filled('password')) {
-            $user->forceFill([
-                'password' => Hash::make($validated['password']),
-                'debe_cambiar_password' => false,
-                'intentos_fallidos' => 0,
-                'bloqueos_consecutivos' => 0,
-                'bloqueado_hasta' => null,
-            ])->save();
+        $rutaFoto = null;
+        if ($nuevaFoto !== null) {
+            $directorioFotos = $user->docente !== null ? 'fotos/docentes' : 'fotos/estudiantes';
+            $rutaFoto = $nuevaFoto->store($directorioFotos, 'public');
 
-            BitacoraService::registrar('cambio_password', 'users', $user->id);
+            if ($rutaFoto === false) {
+                return back()->withErrors(['foto_personal' => 'No se pudo guardar la fotografía.']);
+            }
+
+            $datosPerfil['foto_personal'] = $rutaFoto;
+        }
+
+        $usernameNuevo = $validated['username'] ?? $usernameAnterior;
+        $antesPerfil = $perfil?->only(array_keys($datosPerfil)) ?? [];
+
+        try {
+            DB::transaction(function () use (
+                $datosPerfil,
+                $perfil,
+                $validated,
+                $user,
+                $usernameAnterior,
+                $usernameNuevo,
+                $antesPerfil
+            ): void {
+                if ($perfil !== null && $datosPerfil !== []) {
+                    $perfil->update($datosPerfil);
+
+                    BitacoraService::registrar(
+                        $user->docente !== null ? 'actualizar_perfil_docente' : 'actualizar_perfil_estudiante',
+                        $user->docente !== null ? 'docentes' : 'estudiantes',
+                        $perfil->id,
+                        $antesPerfil,
+                        $datosPerfil
+                    );
+                }
+
+                if ($usernameNuevo !== $usernameAnterior) {
+                    $user->update(['username' => $usernameNuevo]);
+
+                    BitacoraService::registrar(
+                        'actualizar_username',
+                        'users',
+                        $user->id,
+                        ['username' => $usernameAnterior],
+                        ['username' => $user->username],
+                    );
+                }
+
+                if (filled($validated['password'] ?? null)) {
+                    $user->forceFill([
+                        'password' => Hash::make($validated['password']),
+                        'debe_cambiar_password' => false,
+                        'intentos_fallidos' => 0,
+                        'bloqueos_consecutivos' => 0,
+                        'bloqueado_hasta' => null,
+                    ])->save();
+
+                    BitacoraService::registrar('cambio_password', 'users', $user->id);
+                }
+            });
+        } catch (Throwable $exception) {
+            if ($rutaFoto !== null) {
+                Storage::disk('public')->delete($rutaFoto);
+            }
+
+            throw $exception;
+        }
+
+        if ($rutaFoto !== null && $fotoAnterior !== null) {
+            Storage::disk('public')->delete($fotoAnterior);
         }
 
         $route = $this->isStudentRoute($request) ? 'estudiante.profile.edit' : 'profile.edit';

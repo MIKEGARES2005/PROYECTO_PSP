@@ -17,8 +17,10 @@ class EnsurePasswordIsChanged
             $allowedRoutes = [
                 'profile.edit',
                 'profile.update',
+                'profile.photo',
                 'estudiante.profile.edit',
                 'estudiante.profile.update',
+                'estudiante.profile.photo',
                 'password.update',
                 'estudiante.password.update',
                 'logout',
@@ -32,6 +34,10 @@ class EnsurePasswordIsChanged
                 'estudiante.notifications.index',
                 'estudiante.notifications.clear',
             ];
+
+            if ($user->tipo_usuario === 'docente') {
+                $allowedRoutes[] = 'dashboard';
+            }
 
             if (! $request->routeIs($allowedRoutes) && ! $request->is('logout', 'profile', 'password', 'seguridad/preguntas', 'estudiante/perfil', 'estudiante/password', 'estudiante/seguridad/preguntas')) {
                 return redirect()->route($isStudent ? 'estudiante.profile.edit' : 'profile.edit')

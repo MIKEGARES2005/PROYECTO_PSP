@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Asignacion;
+use App\Models\Alerta;
 use App\Models\Equipo;
 use App\Models\Heartbeat;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class MonitoreoController extends Controller
@@ -23,20 +26,16 @@ class MonitoreoController extends Controller
         $ahora = now();
         $desde = $ahora->copy()->subMinutes(Heartbeat::ONLINE_TIMEOUT_MINUTES);
         $equiposQuery = Equipo::query();
+        $estadosAsignacionAbierta = [
+            'pendiente_entrega',
+            'activa',
+            'devolucion_pendiente',
+            'vencida',
+            'con_incidencia',
+        ];
 
-        if ($request->user()->isDocente()) {
-            $equiposAsignados = Asignacion::forTeacher($request->user())
-                ->select('equipo_id')
-                ->distinct();
-            $equiposQuery->whereIn('id', $equiposAsignados);
-        }
-
-        $equiposConectados = Equipo::query()
-            ->when($request->user()->isDocente(), fn (Builder $query) => $query->whereIn(
-                'id',
-                Asignacion::forTeacher($request->user())->select('equipo_id')->distinct()
-            ))
-            ->whereHas('heartbeats', fn (Builder $query) => $query->whereBetween('created_at', [$desde, $ahora]));
+        $equiposConectados = (clone $equiposQuery)
+            ->whereHas('heartbeats', fn (Builder $query) => $query->whereBetween('fecha_hora', [$desde, $ahora]));
         $equiposSinDatos = (clone $equiposQuery)->doesntHave('heartbeats');
         $totalEquipos = (clone $equiposQuery)->count();
         $totalConectados = (clone $equiposConectados)->count();
@@ -46,22 +45,40 @@ class MonitoreoController extends Controller
             'conectados' => $totalConectados,
             'desconectados' => $totalEquipos - $totalConectados - $totalSinDatos,
             'sin_datos' => $totalSinDatos,
+            'alertas_abiertas' => Alerta::query()
+                ->whereIn('equipo_id', (clone $equiposQuery)->select('id'))
+                ->whereIn('estado', ['abierta', 'atendida'])
+                ->count(),
         ];
 
         $equipos = (clone $equiposQuery)
-            ->with('ultimoHeartbeat')
+            ->with([
+                'activo',
+                'ultimoHeartbeat',
+                'asignaciones' => function (Relation $query) use ($estadosAsignacionAbierta): void {
+                    $query->whereIn('estado', $estadosAsignacionAbierta)
+                        ->with(['estudiante', 'invitado', 'horario.materia', 'horario.docente'])
+                        ->latest('fecha_entrega');
+                },
+            ])
+            ->withCount([
+                'alertas as alertas_abiertas_count' => fn (Builder $query) => $query->whereIn('estado', ['abierta', 'atendida']),
+            ])
             ->when(($filtros['buscar'] ?? '') !== '', function (Builder $query) use ($filtros): void {
                 $buscar = trim($filtros['buscar']);
                 $query->where(function (Builder $equipoQuery) use ($buscar): void {
-                    $equipoQuery->where('codigo', 'like', "%{$buscar}%")
-                        ->orWhere('marca', 'like', "%{$buscar}%")
-                        ->orWhere('modelo', 'like', "%{$buscar}%")
-                        ->orWhere('numero_serie', 'like', "%{$buscar}%");
+                    $equipoQuery->where('identificador', 'like', "%{$buscar}%")
+                        ->orWhereHas('activo', function (Builder $activoQuery) use ($buscar): void {
+                            $activoQuery->where('codigo', 'like', "%{$buscar}%")
+                                ->orWhere('marca', 'like', "%{$buscar}%")
+                                ->orWhere('modelo', 'like', "%{$buscar}%")
+                                ->orWhere('numero_serie', 'like', "%{$buscar}%");
+                        });
                 });
             })
             ->when(($filtros['estado'] ?? '') !== '', function (Builder $query) use ($filtros, $desde, $ahora): void {
                 if ($filtros['estado'] === 'conectados') {
-                    $query->whereHas('heartbeats', fn (Builder $heartbeatQuery) => $heartbeatQuery->whereBetween('created_at', [$desde, $ahora]));
+                    $query->whereHas('heartbeats', fn (Builder $heartbeatQuery) => $heartbeatQuery->whereBetween('fecha_hora', [$desde, $ahora]));
 
                     return;
                 }
@@ -73,14 +90,14 @@ class MonitoreoController extends Controller
                 }
 
                 $query->whereHas('heartbeats')
-                    ->whereDoesntHave('heartbeats', fn (Builder $heartbeatQuery) => $heartbeatQuery->whereBetween('created_at', [$desde, $ahora]));
+                    ->whereDoesntHave('heartbeats', fn (Builder $heartbeatQuery) => $heartbeatQuery->whereBetween('fecha_hora', [$desde, $ahora]));
             })
-            ->orderBy('codigo')
+            ->orderBy('identificador')
             ->paginate(12)
             ->withQueryString();
 
         $equipos->getCollection()->each(function (Equipo $equipo) use ($desde, $ahora): void {
-            $ultimaFecha = $equipo->ultimoHeartbeat?->created_at;
+            $ultimaFecha = $equipo->ultimoHeartbeat?->fecha_hora;
             $estadoConexion = match (true) {
                 $ultimaFecha === null => 'sin_datos',
                 $ultimaFecha->greaterThanOrEqualTo($desde) && $ultimaFecha->lessThanOrEqualTo($ahora) => 'conectado',
@@ -90,15 +107,9 @@ class MonitoreoController extends Controller
             $equipo->setAttribute('estado_conexion', $estadoConexion);
         });
 
-        $ultimaActualizacionQuery = Heartbeat::query();
-        if ($request->user()->isDocente()) {
-            $ultimaActualizacionQuery->whereIn(
-                'equipo_id',
-                Asignacion::forTeacher($request->user())->select('equipo_id')->distinct()
-            );
-        }
-
-        $ultimaActualizacion = $ultimaActualizacionQuery->max('created_at');
+        $ultimaActualizacion = Heartbeat::query()
+            ->whereIn('equipo_id', (clone $equiposQuery)->select('id'))
+            ->max('fecha_hora');
         $ultimaActualizacion = $ultimaActualizacion === null ? null : Carbon::parse($ultimaActualizacion);
 
         return view('monitoreo.index', compact(
@@ -107,5 +118,41 @@ class MonitoreoController extends Controller
             'filtros',
             'ultimaActualizacion',
         ));
+    }
+
+    public function storePairingCode(Equipo $equipo): RedirectResponse
+    {
+        $codigo = Str::upper(Str::random(12));
+        $equipo->loadMissing('activo');
+
+        $equipo->forceFill([
+            'token_hash' => null,
+            'token_creado_en' => null,
+            'token_expira_en' => null,
+            'codigo_vinculacion_hash' => hash('sha256', $codigo),
+            'codigo_vinculacion_expira_en' => now()->addMinutes(10),
+        ])->save();
+
+        return back()
+            ->with('success', 'Código de vinculación generado. Solo se mostrará una vez y vence en 10 minutos.')
+            ->with('pairing_code', [
+                'equipo_id' => $equipo->id,
+                'equipo_identificador' => $equipo->identificador,
+                'codigo_patrimonial' => $equipo->activo?->codigo,
+                'codigo' => $codigo,
+            ]);
+    }
+
+    public function destroyPairing(Equipo $equipo): RedirectResponse
+    {
+        $equipo->forceFill([
+            'token_hash' => null,
+            'token_creado_en' => null,
+            'token_expira_en' => null,
+            'codigo_vinculacion_hash' => null,
+            'codigo_vinculacion_expira_en' => null,
+        ])->save();
+
+        return back()->with('success', 'Dispositivo desvinculado. Su credencial anterior ya no permite conectarse.');
     }
 }

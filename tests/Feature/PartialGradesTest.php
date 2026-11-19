@@ -2,6 +2,7 @@
 
 use App\Models\Docente;
 use App\Models\Estudiante;
+use App\Models\Gestion;
 use App\Models\Horario;
 use App\Models\Inscripcion;
 use App\Models\Materia;
@@ -11,7 +12,7 @@ beforeEach(function (): void {
     $this->withoutVite();
 });
 
-test('teachers register the first partial and administrators are notified', function () {
+test('teachers register the first partial without notifying administrators yet', function () {
     $admin = gradeAdminActor();
     $teacher = gradeTeacherProfile();
     $teacherUser = gradeTeacherActor($teacher);
@@ -33,7 +34,7 @@ test('teachers register the first partial and administrators are notified', func
         'nota_final' => null,
     ]);
 
-    $this->assertDatabaseHas('notificaciones', [
+    $this->assertDatabaseMissing('notificaciones', [
         'user_id' => $admin->id,
         'tipo' => 'calificacion',
     ]);
@@ -65,7 +66,7 @@ test('the second partial calculates the final grade as the simple average', func
         ->and($enrollment->nota_final_en)->not->toBeNull()
         ->and($enrollment->resultadoSegunNotaFinal())->toBe('Aprobado');
 
-    $this->assertDatabaseHas('notificaciones', [
+    $this->assertDatabaseMissing('notificaciones', [
         'user_id' => $admin->id,
         'tipo' => 'calificacion',
     ]);
@@ -102,7 +103,9 @@ test('partial grades must stay within the zero to one hundred scale', function (
             'parcial' => '1',
             'nota' => 101,
         ])
-        ->assertSessionHasErrors('nota');
+        ->assertSessionHasErrors([
+            'nota' => 'La nota debe estar entre 0 y 100.',
+        ]);
 
     $this->actingAs($teacherUser)
         ->from(route('gestion-academica.semestre', ['semestre' => 'Primero', 'gestion' => '2026-II']))
@@ -118,66 +121,81 @@ test('partial grades must stay within the zero to one hundred scale', function (
     ]);
 });
 
-test('teachers cannot report a result before both partials are registered', function () {
-    $teacher = gradeTeacherProfile();
-    $teacherUser = gradeTeacherActor($teacher);
-    $enrollment = gradeEnrollment($teacher, ['parcial_1' => 80, 'parcial_2' => null]);
-
-    $this->actingAs($teacherUser)
-        ->from(route('gestion-academica.semestre', ['semestre' => 'Primero', 'gestion' => '2026-II']))
-        ->patch(route('inscripciones.report-result', $enrollment), [
-            'resultado_reportado' => 'Aprobado',
-        ])
-        ->assertSessionHasErrors('resultado_reportado');
-
-    $this->assertDatabaseHas('inscripciones', [
-        'id' => $enrollment->id,
-        'resultado_reportado' => null,
-    ]);
-});
-
-test('teachers cannot report a result that contradicts the final grade', function () {
-    $teacher = gradeTeacherProfile();
-    $teacherUser = gradeTeacherActor($teacher);
-    $enrollment = gradeEnrollment($teacher, ['parcial_1' => 40, 'parcial_2' => 50]);
-
-    $this->actingAs($teacherUser)
-        ->from(route('gestion-academica.semestre', ['semestre' => 'Primero', 'gestion' => '2026-II']))
-        ->patch(route('inscripciones.report-result', $enrollment), [
-            'resultado_reportado' => 'Aprobado',
-        ])
-        ->assertSessionHasErrors('resultado_reportado');
-
-    $this->assertDatabaseHas('inscripciones', [
-        'id' => $enrollment->id,
-        'resultado_reportado' => null,
-    ]);
-});
-
-test('teachers can report a result consistent with the final grade', function () {
-    $admin = gradeAdminActor();
+test('teachers cannot submit the subject results while any enrolled student is missing a partial', function () {
     $teacher = gradeTeacherProfile();
     $teacherUser = gradeTeacherActor($teacher);
     $enrollment = gradeEnrollment($teacher, ['parcial_1' => 80, 'parcial_2' => 90]);
+    $incompleteEnrollment = gradeEnrollmentForSubject($enrollment->materia, [
+        'parcial_1' => 75,
+        'parcial_2' => null,
+    ]);
 
     $this->actingAs($teacherUser)
-        ->patch(route('inscripciones.report-result', $enrollment), [
-            'resultado_reportado' => 'Aprobado',
-        ])
+        ->from(route('panel-docente.gestion-academica.materia', [
+            'semestre' => 'Primero',
+            'materia' => $enrollment->materia_id,
+            'gestion' => 'II-2026',
+        ]))
+        ->patch(route('panel-docente.inscripciones.report-results', $enrollment->materia_id))
+        ->assertSessionHasErrors('resultados');
+
+    $this->assertDatabaseHas('inscripciones', [
+        'id' => $enrollment->id,
+        'resultado_reportado' => null,
+    ]);
+    $this->assertDatabaseHas('inscripciones', [
+        'id' => $incompleteEnrollment->id,
+        'resultado_reportado' => null,
+    ]);
+});
+
+test('teachers submit all completed subject results together for administrative review', function () {
+    config()->set('academica.nota_minima_aprobacion', 61);
+
+    $admin = gradeAdminActor();
+    $teacher = gradeTeacherProfile();
+    $teacherUser = gradeTeacherActor($teacher);
+    $enrollment = gradeEnrollment($teacher, ['parcial_1' => 60, 'parcial_2' => 60]);
+    $secondEnrollment = gradeEnrollmentForSubject($enrollment->materia, [
+        'parcial_1' => 61,
+        'parcial_2' => 61,
+    ]);
+
+    $this->actingAs($teacherUser)
+        ->patch(route('panel-docente.inscripciones.report-results', $enrollment->materia_id))
         ->assertRedirect()
         ->assertSessionHas('success');
 
     $this->assertDatabaseHas('inscripciones', [
         'id' => $enrollment->id,
+        'resultado_reportado' => 'Reprobado',
+        'resultado_reportado_por' => $teacherUser->id,
+        'estado' => 'Cursando',
+    ]);
+    $this->assertDatabaseHas('inscripciones', [
+        'id' => $secondEnrollment->id,
         'resultado_reportado' => 'Aprobado',
         'resultado_reportado_por' => $teacherUser->id,
         'estado' => 'Cursando',
     ]);
+    expect((float) $enrollment->fresh()->nota_final)->toBe(60.0)
+        ->and((float) $secondEnrollment->fresh()->nota_final)->toBe(61.0);
 
     $this->assertDatabaseHas('notificaciones', [
         'user_id' => $admin->id,
-        'tipo' => 'resultado_reportado',
+        'tipo' => 'resultados_materia_reportados',
     ]);
+
+    $this->actingAs($teacherUser)
+        ->patch(route('panel-docente.inscripciones.report-results', $enrollment->materia_id))
+        ->assertSessionHasErrors('resultados');
+
+    $this->actingAs($teacherUser)
+        ->patch(route('inscripciones.register-partial', $enrollment), [
+            'parcial' => '1',
+            'nota' => 60,
+        ])
+        ->assertSessionHasErrors('nota');
 });
 
 test('administrators confirm the result and the teacher is notified', function () {
@@ -195,9 +213,10 @@ test('administrators confirm the result and the teacher is notified', function (
         ->patch(route('inscripciones.status', $enrollment), [
             'estado' => 'Reprobado',
         ])
-        ->assertRedirect(route('gestion-academica.semestre', [
+        ->assertRedirect(route('gestion-academica.materia', [
             'semestre' => 'Primero',
-            'gestion' => '2026-II',
+            'materia' => $enrollment->materia_id,
+            'gestion' => Gestion::activa()?->codigo,
         ]));
 
     $this->assertDatabaseHas('inscripciones', [
@@ -225,6 +244,28 @@ test('teachers cannot grade enrollments from another teacher schedule', function
             'nota' => 70,
         ])
         ->assertNotFound();
+});
+
+test('teachers cannot grade enrollments assigned only in a different academic period', function () {
+    $teacher = gradeTeacherProfile();
+    $teacherUser = gradeTeacherActor($teacher);
+    $enrollment = gradeEnrollment($teacher);
+    Horario::query()->where('materia_id', $enrollment->materia_id)->update([
+        'gestion_id' => null,
+        'gestion' => 'I-2026',
+    ]);
+
+    $this->actingAs($teacherUser)
+        ->patch(route('inscripciones.register-partial', $enrollment), [
+            'parcial' => '1',
+            'nota' => 70,
+        ])
+        ->assertNotFound();
+
+    $this->assertDatabaseHas('inscripciones', [
+        'id' => $enrollment->id,
+        'parcial_1' => null,
+    ]);
 });
 
 function gradeAdminActor(): User
@@ -285,6 +326,8 @@ function gradeEnrollment(Docente $docente, array $notas = []): Inscripcion
     ]);
 
     Horario::create([
+        'gestion_id' => Gestion::activa()?->id,
+        'gestion' => Gestion::activa()?->codigo ?? 'II-2026',
         'docente_id' => $docente->id,
         'materia_id' => $materia->id,
         'dia_semana' => 'Lunes',
@@ -296,7 +339,8 @@ function gradeEnrollment(Docente $docente, array $notas = []): Inscripcion
     $atributos = [
         'estudiante_id' => $estudiante->id,
         'materia_id' => $materia->id,
-        'gestion' => '2026-II',
+        'gestion_id' => Gestion::activa()?->id,
+        'gestion' => Gestion::activa()?->codigo ?? 'II-2026',
         'tipo' => 'Normal',
         'estado' => 'Cursando',
         'fecha_inscripcion' => '2026-10-14',
@@ -311,6 +355,44 @@ function gradeEnrollment(Docente $docente, array $notas = []): Inscripcion
     }
 
     $inscripcion = Inscripcion::create($atributos);
+
+    if ($inscripcion->tieneAmbosParciales()) {
+        $inscripcion->update([
+            'nota_final' => $inscripcion->calcularNotaFinal(),
+            'nota_final_en' => now(),
+        ]);
+    }
+
+    return $inscripcion;
+}
+
+/**
+ * @param  array{parcial_1?: int|null, parcial_2?: int|null}  $notas
+ */
+function gradeEnrollmentForSubject(Materia $materia, array $notas = []): Inscripcion
+{
+    $suffix = fake()->unique()->numerify('####');
+    $estudiante = Estudiante::create([
+        'nombres' => 'Estudiante',
+        'apellido_paterno' => 'Parcial',
+        'apellido_materno' => 'Prueba',
+        'matricula' => "MAT{$suffix}",
+        'semestre' => 'Primero',
+        'ci' => "CI{$suffix}",
+        'estado' => 'activo',
+    ]);
+
+    $inscripcion = Inscripcion::create([
+        'estudiante_id' => $estudiante->id,
+        'materia_id' => $materia->id,
+        'gestion_id' => Gestion::activa()?->id,
+        'gestion' => Gestion::activa()?->codigo ?? 'II-2026',
+        'tipo' => 'Normal',
+        'estado' => 'Cursando',
+        'fecha_inscripcion' => '2026-10-14',
+        'parcial_1' => $notas['parcial_1'] ?? null,
+        'parcial_2' => $notas['parcial_2'] ?? null,
+    ]);
 
     if ($inscripcion->tieneAmbosParciales()) {
         $inscripcion->update([

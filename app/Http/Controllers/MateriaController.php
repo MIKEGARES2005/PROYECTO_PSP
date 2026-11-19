@@ -34,7 +34,7 @@ class MateriaController extends Controller
     {
         $datos = $request->validate([
             'nombre' => ['required', 'string', 'max:150'],
-            'sigla' => ['required', 'string', 'max:20', Rule::unique('materias', 'sigla')],
+            'sigla' => ['nullable', 'string', 'max:20', Rule::unique('materias', 'sigla')],
             'semestre' => ['required', Rule::in(Materia::SEMESTRES)],
         ]);
 
@@ -63,7 +63,7 @@ class MateriaController extends Controller
         $datos = $request->validate([
             'nombre' => ['required', 'string', 'max:150'],
             'sigla' => [
-                'required',
+                'nullable',
                 'string',
                 'max:20',
                 Rule::unique('materias', 'sigla')->ignore($materia->id),
@@ -90,8 +90,9 @@ class MateriaController extends Controller
         $materia->update($datos);
 
         return redirect()
-            ->route('gestion-academica.semestre', [
+            ->route('gestion-academica.materia', [
                 'semestre' => $materia->semestre,
+                'materia' => $materia,
                 'gestion' => $request->input('gestion'),
             ])
             ->with('success', 'Estado de la materia actualizado correctamente.');

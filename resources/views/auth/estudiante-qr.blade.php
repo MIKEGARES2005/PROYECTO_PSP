@@ -111,8 +111,8 @@
     <div class="qr-page-shell relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950">
         {{-- Fondo decorativo --}}
         <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl"></div>
-            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-indigo-500/20 blur-3xl"></div>
+            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-500/15 blur-2xl"></div>
+            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-indigo-500/20 blur-2xl"></div>
             <div class="login-grid absolute inset-0 opacity-50"></div>
         </div>
 

@@ -19,23 +19,42 @@ class IncidenciaController extends Controller
         $filtros = $request->validate([
             'buscar' => ['nullable', 'string', 'max:100'],
             'estado' => ['nullable', Rule::in(['pendientes', 'resueltas'])],
-            'prioridad' => ['nullable', Rule::in(['Baja', 'Media', 'Alta', 'Critica'])],
+            'prioridad' => ['nullable', Rule::in(['baja', 'media', 'alta', 'critica', 'Baja', 'Media', 'Alta', 'Critica'])],
+            'origen' => ['nullable', Rule::in(['manual', 'automatica', 'estudiante', 'app'])],
         ]);
         $busqueda = trim($filtros['buscar'] ?? '');
+        $filtros['prioridad'] = strtolower($filtros['prioridad'] ?? '');
+        $incidenciasQuery = $this->visibleIncidents();
+        $estadisticas = [
+            'pendientes' => (clone $incidenciasQuery)->whereIn('estado', ['abierta', 'en_revision'])->count(),
+            'prioritarias' => (clone $incidenciasQuery)
+                ->whereIn('estado', ['abierta', 'en_revision'])
+                ->whereIn('prioridad', ['alta', 'critica'])
+                ->count(),
+            'automaticas' => (clone $incidenciasQuery)->where('origen', 'automatica')->count(),
+            'app' => (clone $incidenciasQuery)->where('origen', 'app')->count(),
+            'resueltas' => (clone $incidenciasQuery)->where('estado', 'resuelta')->count(),
+        ];
 
-        $incidencias = $this->visibleIncidents()->with([
-            'equipo',
+        $incidencias = (clone $incidenciasQuery)->with([
+            'activo.equipo.ultimoHeartbeat',
             'asignacion.estudiante',
+            'asignacion.invitado',
+            'alerta',
+            'reportadoPor',
+            'resueltoPor',
         ])
             ->when($busqueda !== '', function (Builder $query) use ($busqueda): void {
                 $query->where(function (Builder $incidentQuery) use ($busqueda): void {
                     $incidentQuery->where('tipo', 'like', "%{$busqueda}%")
                         ->orWhere('descripcion', 'like', "%{$busqueda}%")
                         ->orWhere('estado', 'like', "%{$busqueda}%")
-                        ->orWhereHas('equipo', function (Builder $equipmentQuery) use ($busqueda): void {
-                            $equipmentQuery->where('codigo', 'like', "%{$busqueda}%")
+                        ->orWhere('origen', 'like', "%{$busqueda}%")
+                        ->orWhereHas('activo', function (Builder $assetQuery) use ($busqueda): void {
+                            $assetQuery->where('codigo', 'like', "%{$busqueda}%")
                                 ->orWhere('marca', 'like', "%{$busqueda}%")
-                                ->orWhere('modelo', 'like', "%{$busqueda}%");
+                                ->orWhere('modelo', 'like', "%{$busqueda}%")
+                                ->orWhereHas('equipo', fn (Builder $equipmentQuery) => $equipmentQuery->where('identificador', 'like', "%{$busqueda}%"));
                         })
                         ->orWhereHas('asignacion.estudiante', function (Builder $studentQuery) use ($busqueda): void {
                             $studentQuery->where('nombres', 'like', "%{$busqueda}%")
@@ -47,26 +66,22 @@ class IncidenciaController extends Controller
             })
             ->when(isset($filtros['estado']) && $filtros['estado'] !== '', function (Builder $query) use ($filtros): void {
                 if ($filtros['estado'] === 'resueltas') {
-                    $query->whereRaw('LOWER(estado) = ?', ['resuelta']);
+                    $query->whereIn('estado', ['resuelta', 'descartada']);
 
                     return;
                 }
 
-                $query->whereRaw('LOWER(estado) IN (?, ?, ?, ?)', [
-                    'reportada',
-                    'en revision',
-                    'pendiente',
-                    'abierta',
-                ]);
+                $query->whereIn('estado', ['abierta', 'en_revision']);
             })
             ->when(isset($filtros['prioridad']) && $filtros['prioridad'] !== '', function (Builder $query) use ($filtros): void {
-                $query->whereRaw('LOWER(prioridad) = ?', [strtolower($filtros['prioridad'])]);
+                $query->where('prioridad', $filtros['prioridad']);
             })
+            ->when(isset($filtros['origen']) && $filtros['origen'] !== '', fn (Builder $query) => $query->where('origen', $filtros['origen']))
             ->latest()
             ->paginate(12)
             ->withQueryString();
 
-        return view('incidencias.index', compact('incidencias'));
+        return view('incidencias.index', compact('incidencias', 'estadisticas', 'filtros'));
     }
 
     public function create(): View
@@ -74,20 +89,21 @@ class IncidenciaController extends Controller
         $esDocente = auth()->user()->isDocente();
         $asignaciones = ($esDocente
             ? $this->teacherAssignments(true)
-            : Asignacion::query()->where('estado', 'activa'))
+            : Asignacion::query()->where('estado', 'activa')->whereNotNull('equipo_id'))
             ->with([
-                'equipo',
+                'equipo.activo',
                 'estudiante',
+                'invitado',
             ])
             ->latest()
             ->get();
 
         $equipos = $esDocente
-            ? Equipo::whereIn(
+            ? Equipo::query()->with('activo')->whereIn(
                 'id',
                 $this->teacherAssignments(true)->select('equipo_id')
-            )->orderBy('codigo')->get()
-            : Equipo::orderBy('codigo')->get();
+            )->orderBy('identificador')->get()
+            : Equipo::query()->with('activo')->orderBy('identificador')->get();
 
         return view('incidencias.create', compact(
             'equipos',
@@ -104,13 +120,14 @@ class IncidenciaController extends Controller
             'asignacion_id' => [$esDocente ? 'required' : 'nullable', 'exists:asignaciones,id'],
             'tipo' => ['required', Rule::in(['Hardware', 'Software', 'Red', 'Bateria', 'Pantalla', 'Periferico', 'Otro'])],
             'descripcion' => ['required', 'string', 'max:5000'],
-            'prioridad' => ['required', Rule::in(['Baja', 'Media', 'Alta', 'Critica'])],
-            'estado' => [$esDocente ? 'nullable' : 'required', Rule::in(['Reportada', 'En revision'])],
+            'prioridad' => ['required', Rule::in(['baja', 'media', 'alta', 'critica', 'Baja', 'Media', 'Alta', 'Critica'])],
+            'estado' => [$esDocente ? 'nullable' : 'required', Rule::in(['abierta', 'en_revision', 'Reportada', 'En revision'])],
             'fecha_reporte' => [$esDocente ? 'nullable' : 'required', 'date'],
             'observaciones' => ['nullable', 'string'],
         ]);
 
         $asignacion = null;
+        $equipo = null;
         if (! empty($datos['asignacion_id'])) {
             $consultaAsignacion = $esDocente
                 ? $this->teacherAssignments(true)
@@ -123,23 +140,39 @@ class IncidenciaController extends Controller
                     ->withErrors(['asignacion_id' => 'La asignación no está dentro de tu ámbito autorizado.']);
             }
 
-            if (
-                isset($datos['equipo_id'])
-                && (int) $datos['equipo_id'] !== (int) $asignacion->equipo_id
-            ) {
+            if (isset($datos['equipo_id']) && (int) $datos['equipo_id'] !== (int) $asignacion->equipo_id) {
                 return back()
                     ->withInput()
                     ->withErrors(['equipo_id' => 'El equipo no coincide con la asignación seleccionada.']);
             }
 
-            $datos['equipo_id'] = $asignacion->equipo_id;
+            $equipo = Equipo::query()->find($asignacion->equipo_id);
+        } elseif (isset($datos['equipo_id'])) {
+            $equipo = Equipo::query()->find($datos['equipo_id']);
         }
 
         if ($esDocente) {
-            $datos['estado'] = 'Reportada';
+            $datos['estado'] = 'abierta';
             $datos['fecha_reporte'] = now();
-            $datos['fecha_resolucion'] = null;
+        } elseif (isset($datos['estado'])) {
+            $datos['estado'] = match (strtolower(str_replace(' ', '_', $datos['estado']))) {
+                'reportada' => 'abierta',
+                'en_revision' => 'en_revision',
+                default => $datos['estado'],
+            };
         }
+
+        if ($equipo === null || $equipo->activo_id === null) {
+            return back()
+                ->withInput()
+                ->withErrors(['equipo_id' => 'El equipo seleccionado no tiene un activo patrimonial asociado.']);
+        }
+
+        $datos['activo_id'] = $equipo->activo_id;
+        $datos['prioridad'] = strtolower($datos['prioridad']);
+        $datos['origen'] = 'manual';
+        $datos['reportado_por'] = $request->user()->id;
+        unset($datos['equipo_id']);
 
         Incidencia::create($datos);
 
@@ -148,7 +181,7 @@ class IncidenciaController extends Controller
             ->with('success', 'Incidencia registrada correctamente.');
     }
 
-    public function resolver(int $id): RedirectResponse
+    public function resolver(Request $request, int $id): RedirectResponse
     {
         $incidencia = Incidencia::findOrFail($id);
 
@@ -159,8 +192,9 @@ class IncidenciaController extends Controller
         }
 
         $incidencia->update([
-            'estado' => 'Resuelta',
+            'estado' => 'resuelta',
             'fecha_resolucion' => now(),
+            'resuelto_por' => $request->user()->id,
         ]);
 
         return redirect()
@@ -183,10 +217,11 @@ class IncidenciaController extends Controller
         $query = Incidencia::query();
 
         if (auth()->user()->isDocente()) {
-            $query->whereIn(
-                'asignacion_id',
-                $this->teacherAssignments()->select('id')
-            );
+            $equipoIds = $this->teacherAssignments()->select('equipo_id')->distinct();
+            $query->where(function (Builder $visibleQuery) use ($equipoIds): void {
+                $visibleQuery->whereIn('asignacion_id', $this->teacherAssignments()->select('id'))
+                    ->orWhereHas('activo.equipo', fn (Builder $equipoQuery) => $equipoQuery->whereIn('id', $equipoIds));
+            });
         }
 
         return $query;
@@ -208,7 +243,8 @@ class IncidenciaController extends Controller
             );
 
         if ($activeOnly) {
-            $query->where('estado', 'activa');
+            $query->where('estado', 'activa')
+                ->whereNotNull('equipo_id');
         }
 
         return $query;

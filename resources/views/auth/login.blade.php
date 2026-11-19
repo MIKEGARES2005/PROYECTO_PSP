@@ -8,7 +8,9 @@
 
 <x-guest-layout>
     {{-- Credenciales incorrectas o cuenta bloqueada: notificación emergente --}}
-    <x-toast-push type="error" :message="$errors->first('username') ?: $errors->first('password')" />
+    @unless ($loginLockoutSeconds > 0)
+        <x-toast-push type="error" :message="$errors->first('username') ?: $errors->first('password') ?: session('warning')" />
+    @endunless
 
     {{-- Encabezado --}}
     <div class="mb-6 text-center">
@@ -25,15 +27,16 @@
         x-data="{
             lockoutActive: {{ $loginLockoutSeconds > 0 ? 'true' : 'false' }},
             secondsRemaining: {{ $loginLockoutSeconds }},
+            unlockAt: Date.now() + {{ $loginLockoutSeconds }} * 1000,
             timer: null,
             startLockoutTimer() {
                 if (!this.lockoutActive) return;
                 this.timer = window.setInterval(() => {
-                    this.secondsRemaining = Math.max(0, this.secondsRemaining - 1);
+                    this.secondsRemaining = Math.max(0, Math.ceil((this.unlockAt - Date.now()) / 1000));
 
                     if (this.secondsRemaining === 0) {
                         window.clearInterval(this.timer);
-                        window.location.reload();
+                        this.lockoutActive = false;
                     }
                 }, 1000);
             },
@@ -42,6 +45,13 @@
                 const seconds = (this.secondsRemaining % 60).toString().padStart(2, '0');
 
                 return `${minutes}:${seconds}`;
+            },
+            formattedUnlockTime() {
+                return new Intl.DateTimeFormat('es-BO', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }).format(new Date(this.unlockAt));
             }
         }"
         x-init="startLockoutTimer()"
@@ -181,6 +191,7 @@
             <p class="mt-2 text-sm leading-6 text-amber-800">Se alcanzó el límite de intentos fallidos.</p>
             <p class="mt-5 text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Puedes volver a intentarlo en</p>
             <p class="mt-1 font-mono text-4xl font-black tracking-wider text-amber-900" x-text="formattedTime()"></p>
+            <p class="mt-3 text-sm text-amber-800">Desbloqueo estimado a las <span class="font-bold" x-text="formattedUnlockTime()"></span></p>
         </div>
     </div>
 

@@ -17,12 +17,16 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen antialiased selection:bg-emerald-300/30 selection:text-white" style="font-family: 'Manrope', sans-serif;">
+    @if (session('logged_out_portal') === 'student')
+        <script>sessionStorage.setItem('system-logged-out-portal', 'student');</script>
+    @endif
+
     <div class="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#064E3B] via-[#0F766E] to-[#134E4A]">
         {{-- Decoración de fondo --}}
         <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-300/25 blur-3xl"></div>
-            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-cyan-300/20 blur-3xl"></div>
-            <div class="absolute right-[12%] top-[14%] h-24 w-24 animate-pulse rounded-full border border-emerald-200/20"></div>
+            <div class="login-orb absolute -left-32 -top-32 h-96 w-96 rounded-full bg-emerald-300/25 blur-2xl"></div>
+            <div class="login-orb login-orb-delayed absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-cyan-300/20 blur-2xl"></div>
+            <div class="absolute right-[12%] top-[14%] h-24 w-24 rounded-full border border-emerald-200/20"></div>
             <div class="absolute bottom-[18%] left-[12%] h-16 w-16 rounded-full border border-cyan-200/20"></div>
             <div class="login-grid absolute inset-0 opacity-40"></div>
         </div>

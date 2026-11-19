@@ -10,6 +10,6 @@ return [
     | parciales y se aprueba con la nota mínima configurada aquí.
     |
     */
-    'nota_minima_aprobacion' => (float) env('ACADEMICA_NOTA_MINIMA', 56),
+    'nota_minima_aprobacion' => (float) env('ACADEMICA_NOTA_MINIMA', 61),
     'nota_maxima' => 100.0,
 ];

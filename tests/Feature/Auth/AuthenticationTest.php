@@ -18,7 +18,8 @@ test('login screen can be rendered', function () {
     $response = $this->get('/login');
 
     $response->assertOk()
-        ->assertSee('¿Olvidó su contraseña?');
+        ->assertSee('¿Olvidó su contraseña?')
+        ->assertSee('Mostrar contraseña');
 });
 
 test('staff login exposes the student QR access', function () {
@@ -35,7 +36,9 @@ test('student login screen can be rendered', function () {
     $this->get(route('estudiante.login'))
         ->assertOk()
         ->assertSee('Usuario o matrícula')
+        ->assertSee('placeholder="Ingrese su usuario"', false)
         ->assertSee('¿Eres nuevo en el sistema? Regístrate aquí')
+        ->assertSee('Mostrar contraseña')
         ->assertSee(route('estudiante.password.request'), false);
 });
 
@@ -52,7 +55,9 @@ test('a valid student login keeps the administrative session independent', funct
     $admin = createAuthUser('administrador');
     $student = createAuthUser('estudiante');
 
-    $response = $this->actingAs($admin)->post(route('estudiante.login.store'), [
+    $response = $this->withSession([
+        'url.intended' => route('estudiante.notifications.index'),
+    ])->actingAs($admin)->post(route('estudiante.login.store'), [
         'username' => $student->username,
         'password' => 'password',
     ]);
@@ -72,10 +77,31 @@ test('student logout does not close the administrative session', function () {
     ]);
 
     $this->post(route('estudiante.logout'))
-        ->assertRedirect(route('estudiante.login'));
+        ->assertRedirect(route('estudiante.login'))
+        ->assertSessionHas('logged_out_portal', 'student');
+
+    $this->get(route('estudiante.login'))
+        ->assertSee("sessionStorage.setItem('system-logged-out-portal', 'student')", false);
 
     expect(Auth::guard('web')->user()->is($admin))->toBeTrue()
         ->and(Auth::guard('student')->check())->toBeFalse();
+});
+
+test('logged-out students cannot reopen the student dashboard and authenticated pages are not cached', function () {
+    $student = createAuthUser('estudiante');
+
+    $this->actingAs($student, 'student')
+        ->get(route('estudiante.dashboard'))
+        ->assertHeader('Cache-Control', 'max-age=0, must-revalidate, no-store, private')
+        ->assertSee('data-authenticated-portal="student"', false)
+        ->assertSee('data-logout-form="student"', false);
+
+    $this->post(route('estudiante.logout'))
+        ->assertRedirect(route('estudiante.login'))
+        ->assertHeader('Cache-Control', 'max-age=0, must-revalidate, no-store, private');
+
+    $this->get(route('estudiante.dashboard'))
+        ->assertRedirect(route('estudiante.login'));
 });
 
 test('students can open their portal dashboard', function () {
@@ -120,6 +146,7 @@ test('student password recovery opens the security-question flow', function () {
     $this->get(route('estudiante.password.request'))
         ->assertOk()
         ->assertSee('Recuperar contraseña')
+        ->assertDontSee('name="matricula"', false)
         ->assertSee(route('estudiante.password.security.verify'), false);
 });
 
@@ -144,6 +171,40 @@ test('an administrative session stays in the student recovery flow', function ()
             'username' => $student->username,
         ])
         ->assertRedirect(route('estudiante.password.security.questions'));
+});
+
+test('students can start password recovery with their username', function () {
+    $student = createAuthUser('estudiante');
+
+    foreach (['Color favorito', 'Ciudad de nacimiento', 'Nombre de mascota'] as $pregunta) {
+        $student->preguntasSeguridad()->create([
+            'pregunta' => $pregunta,
+            'respuesta_hash' => Hash::make('respuesta'),
+        ]);
+    }
+
+    $this->post(route('estudiante.password.security.verify'), [
+        'username' => $student->username,
+    ])
+        ->assertRedirect(route('estudiante.password.security.questions'))
+        ->assertSessionHas('password_reset_user_id', $student->id);
+});
+
+test('students can start password recovery with their matricula', function () {
+    $student = createAuthUser('estudiante');
+
+    foreach (['Color favorito', 'Ciudad de nacimiento', 'Nombre de mascota'] as $pregunta) {
+        $student->preguntasSeguridad()->create([
+            'pregunta' => $pregunta,
+            'respuesta_hash' => Hash::make('respuesta'),
+        ]);
+    }
+
+    $this->post(route('estudiante.password.security.verify'), [
+        'username' => strtolower($student->estudiante->matricula),
+    ])
+        ->assertRedirect(route('estudiante.password.security.questions'))
+        ->assertSessionHas('password_reset_user_id', $student->id);
 });
 
 test('student QR page uses the configured public portal URL', function () {
@@ -261,26 +322,83 @@ test('active docentes can authenticate using the login screen', function () {
     $docente = createAuthDocente();
     $user = createAuthUser('docente', $docente);
 
-    $response = $this->post('/login', [
+    $response = $this->withSession([
+        'url.intended' => route('profile.edit'),
+    ])->post('/login', [
         'username' => $user->username,
         'password' => 'password',
     ]);
 
     $this->assertAuthenticated();
+    $response->assertRedirect(route('dashboard', absolute: false))
+        ->assertSessionHas('staff_login_welcome', true);
+
+    $this->get(route('dashboard'))
+        ->assertSee('¡Bienvenido al sistema!')
+        ->assertSee('Estimado docente')
+        ->assertSee($user->name);
+});
+
+test('active docentes can authenticate with an eñe in their username', function () {
+    $docente = createAuthDocente();
+    $user = createAuthUser('docente', $docente);
+    $user->update(['username' => 'docente_castañeta']);
+
+    $response = $this->post('/login', [
+        'username' => 'docente_castañeta',
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticatedAs($user);
     $response->assertRedirect(route('dashboard', absolute: false));
+});
+
+test('docentes with temporary credentials see a welcome modal on the dashboard', function () {
+    $docente = createAuthDocente();
+    $user = createAuthUser('docente', $docente);
+    $user->update(['debe_cambiar_password' => true]);
+
+    $this->post('/login', [
+        'username' => $user->username,
+        'password' => 'password',
+    ])
+        ->assertRedirect(route('dashboard', absolute: false))
+        ->assertSessionHas('teacher_welcome', true)
+        ->assertSessionHas('staff_login_welcome', true);
+
+    $this->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee('¡Bienvenido al sistema!')
+        ->assertSee('Estimado docente')
+        ->assertSee('id="bienvenida-docente"', false)
+        ->assertSee('¡Bienvenido al panel docente!')
+        ->assertSee('cambia tu nombre de usuario y contraseña temporales')
+        ->assertSee('registra tus preguntas de seguridad')
+        ->assertSee('Entendido, ir al panel de inicio');
+
+    $this->get(route('panel-docente.estudiantes'))
+        ->assertRedirect(route('profile.edit'));
 });
 
 test('active administradores with an active docente profile can authenticate', function () {
     $docente = createAuthDocente();
     $user = createAuthUser('administrador', $docente);
 
-    $response = $this->post('/login', [
+    $response = $this->withSession([
+        'url.intended' => route('usuarios.index'),
+    ])->post('/login', [
         'username' => $user->username,
         'password' => 'password',
     ]);
 
     $this->assertAuthenticatedAs($user);
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(route('dashboard', absolute: false))
+        ->assertSessionHas('staff_login_welcome', true);
+
+    $this->get(route('dashboard'))
+        ->assertSee('¡Bienvenido al sistema!')
+        ->assertSee('Estimada administradora')
+        ->assertSee($user->name);
 });
 
 test('administrators with a docente profile still receive the administrative dashboard', function () {
@@ -308,8 +426,23 @@ test('students cannot authenticate through the staff login', function () {
 test('active students can authenticate through the student login', function () {
     $user = createAuthUser('estudiante');
 
-    $response = $this->post('/estudiante/login', [
+    $response = $this->withSession([
+        'url.intended' => route('estudiante.notifications.index'),
+    ])->post('/estudiante/login', [
         'username' => $user->username,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticatedAs($user, 'student');
+    $response->assertRedirect(route('estudiante.dashboard', absolute: false))
+        ->assertSessionMissing('staff_login_welcome');
+});
+
+test('active students can authenticate through the student login using their matricula', function () {
+    $user = createAuthUser('estudiante');
+
+    $response = $this->post(route('estudiante.login.store'), [
+        'username' => strtolower($user->estudiante->matricula),
         'password' => 'password',
     ]);
 
@@ -329,6 +462,45 @@ test('new students see the welcome modal on the first dashboard access', functio
     $response
         ->assertRedirect(route('estudiante.dashboard', absolute: false))
         ->assertSessionHas('student_welcome', true);
+
+    $this->get(route('estudiante.dashboard'))
+        ->assertOk()
+        ->assertSee('id="bienvenida-estudiante"', false)
+        ->assertSee('¡Bienvenido al portal estudiantil!')
+        ->assertSee('Tu cuenta ya está habilitada.');
+});
+
+test('recovered students see a recovery welcome modal on first login', function () {
+    $user = createAuthUser('estudiante');
+    $user->update(['debe_cambiar_password' => true]);
+    Notificacion::create([
+        'user_id' => $user->id,
+        'tipo' => 'solicitud_aprobada',
+        'titulo' => 'Solicitud aceptada',
+        'mensaje' => 'La solicitud de registro fue aceptada.',
+    ]);
+    Notificacion::create([
+        'user_id' => $user->id,
+        'tipo' => 'recuperacion_aprobada',
+        'titulo' => 'Recuperación aprobada',
+        'mensaje' => 'Tu cuenta fue recuperada con éxito.',
+    ]);
+
+    $this->post('/estudiante/login', [
+        'username' => $user->username,
+        'password' => 'password',
+    ])
+        ->assertRedirect(route('estudiante.dashboard', absolute: false))
+        ->assertSessionHas('student_welcome', true)
+        ->assertSessionHas('student_recovery_welcome', true)
+        ->assertSessionHas('warning', 'Recuperación aprobada. Actualiza tu usuario y contraseña temporal; tus preguntas de seguridad se conservan y no necesitas registrarlas de nuevo.');
+
+    $this->get(route('estudiante.dashboard'))
+        ->assertOk()
+        ->assertSee('id="bienvenida-estudiante"', false)
+        ->assertSee('Tu cuenta fue recuperada.')
+        ->assertSee('Tus preguntas de seguridad se conservan')
+        ->assertDontSee('Tu solicitud fue aprobada');
 });
 
 test('account lock events notify admins and stay in the audit log', function () {
@@ -352,17 +524,87 @@ test('account lock events notify admins and stay in the audit log', function () 
 test('locked accounts show a countdown instead of the login form', function () {
     $user = createAuthUser('administrador');
 
-    foreach (range(1, 5) as $intento) {
+    foreach (range(1, 4) as $intento) {
         $this->post('/login', [
             'username' => $user->username,
             'password' => 'password-incorrecta',
         ]);
     }
 
-    $this->get('/login')
+    $this->from('/login')->followingRedirects()->post('/login', [
+        'username' => $user->username,
+        'password' => 'password-incorrecta',
+    ])
         ->assertOk()
         ->assertSee('Cuenta bloqueada temporalmente')
-        ->assertSee('Puedes volver a intentarlo en');
+        ->assertSee('Puedes volver a intentarlo en')
+        ->assertSee('Desbloqueo estimado a las')
+        ->assertSee('lockoutActive: true', false)
+        ->assertSee('x-show="!lockoutActive"', false)
+        ->assertDontSee('El usuario o la contraseña no coinciden con nuestros registros.');
+
+    $this->get('/login')
+        ->assertSee('lockoutActive: true', false)
+        ->assertDontSee('El usuario o la contraseña no coinciden con nuestros registros.');
+});
+
+test('staff rate limiting shows the lockout panel even when the account lock is not set', function () {
+    foreach (range(1, 5) as $intento) {
+        $this->post('/login', [
+            'username' => 'usuario-inexistente',
+            'password' => 'password-incorrecta',
+        ]);
+    }
+
+    $this->from('/login')->followingRedirects()->post('/login', [
+        'username' => 'usuario-inexistente',
+        'password' => 'password-incorrecta',
+    ])
+        ->assertOk()
+        ->assertSee('Cuenta bloqueada temporalmente')
+        ->assertSee('lockoutActive: true', false)
+        ->assertDontSee('El usuario o la contraseña no coinciden con nuestros registros.');
+});
+
+test('locked student accounts show a countdown instead of the login form', function () {
+    $user = createAuthUser('estudiante');
+
+    foreach (range(1, 4) as $intento) {
+        $this->post(route('estudiante.login.store'), [
+            'username' => $user->username,
+            'password' => 'password-incorrecta',
+        ]);
+    }
+
+    $this->from(route('estudiante.login'))->followingRedirects()->post(route('estudiante.login.store'), [
+        'username' => $user->username,
+        'password' => 'password-incorrecta',
+    ])
+        ->assertOk()
+        ->assertSee('Cuenta bloqueada temporalmente')
+        ->assertSee('Puedes volver a intentarlo en')
+        ->assertSee('Desbloqueo estimado a las')
+        ->assertSee('lockoutActive: true', false)
+        ->assertSee('x-show="!lockoutActive"', false)
+        ->assertDontSee('El usuario o la contraseña no coinciden con nuestros registros.');
+});
+
+test('expired account locks render the login form again', function () {
+    $this->travelTo('2026-11-04 08:00:00');
+    $user = createAuthUser('administrador');
+    $user->forceFill(['bloqueado_hasta' => now()->addMinute()])->save();
+    $this->withSession(['_old_input' => ['username' => $user->username]]);
+
+    $this->get('/login')
+        ->assertOk()
+        ->assertSee('lockoutActive: true', false);
+
+    $this->travelTo('2026-11-04 08:02:00');
+
+    $this->get('/login')
+        ->assertSee('lockoutActive: false', false)
+        ->assertSee('id="login-form"', false)
+        ->assertSee('x-show="!lockoutActive"', false);
 });
 
 test('staff cannot authenticate through the student login', function () {
@@ -389,6 +631,40 @@ test('students whose profile is not active cannot authenticate', function (strin
     $this->assertGuest();
 })->with(['inactivo', 'egresado', 'retirado', 'congelado']);
 
+test('deactivated students see the same account warning as deactivated docentes', function () {
+    $user = User::factory()
+        ->estudiante(createAuthEstudiante('inactivo'))
+        ->create();
+
+    $this->from(route('estudiante.login'))
+        ->post(route('estudiante.login.store'), [
+            'username' => $user->username,
+            'password' => 'password',
+        ])
+        ->assertSessionHasErrors([
+            'username' => 'La cuenta fue desactivada. Contacte con administración para el acceso.',
+        ]);
+
+    $this->assertGuest('student');
+});
+
+test('deactivated students are redirected from active sessions to the student login', function () {
+    $user = User::factory()
+        ->estudiante(createAuthEstudiante())
+        ->create();
+    $user->estudiante->update(['estado' => 'inactivo']);
+
+    $this->actingAs($user, 'student')
+        ->get(route('estudiante.dashboard'))
+        ->assertRedirect(route('estudiante.login'))
+        ->assertSessionHas('warning', 'La cuenta fue desactivada. Contacte con administración para el acceso.');
+
+    $this->assertGuest('student');
+
+    $this->get(route('estudiante.login'))
+        ->assertSee('La cuenta fue desactivada. Contacte con administración para el acceso.');
+});
+
 test('guest students are redirected to the student login', function () {
     $this->get(route('estudiante.dashboard'))
         ->assertRedirect(route('estudiante.login'));
@@ -403,17 +679,39 @@ test('administradores without a docente profile can authenticate', function () {
     ]);
 
     $this->assertAuthenticatedAs($user);
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(route('dashboard', absolute: false))
+        ->assertSessionHas('staff_login_welcome', true);
+
+    $this->get(route('dashboard'))
+        ->assertSee('¡Bienvenido al sistema!')
+        ->assertSee('Estimada administradora')
+        ->assertSee($user->name);
 });
 
-test('docentes with an inactive profile cannot authenticate', function () {
-    $docente = createAuthDocente('inactivo');
+test('deactivated docentes see the disabled-account message when they try to log in', function () {
+    $admin = createAuthUser('administrador');
+    $docente = createAuthDocente();
     $user = createAuthUser('docente', $docente);
 
-    $this->post('/login', [
-        'username' => $user->username,
-        'password' => 'password',
-    ]);
+    $this->actingAs($admin)
+        ->patch(route('usuarios.status', $user->id), [
+            'estado' => 'inactivo',
+        ])
+        ->assertRedirect(route('usuarios.show', $user->id));
+
+    expect($docente->fresh()->estado)->toBe('inactivo');
+
+    $this->post('/logout');
+
+    $this->from(route('login'))
+        ->post('/login', [
+            'username' => $user->username,
+            'password' => 'password',
+        ])
+        ->assertSessionHasErrors([
+            'username' => 'La cuenta fue desactivada. Contacte con administración para el acceso.',
+        ])
+        ->assertRedirect(route('login'));
 
     $this->assertGuest();
 });
@@ -448,8 +746,30 @@ test('administrators see registration requests inside the admin shell', function
         ->get(route('admin.solicitudes.index'))
         ->assertOk()
         ->assertSee('Personas y usuarios')
+        ->assertSeeText('Solicitudes')
         ->assertSee('Solicitudes de registro')
-        ->assertSee('Solicitudes de estudiantes');
+        ->assertSee('Solicitudes');
+});
+
+test('administrators can switch between registration and equipment request panels', function () {
+    $admin = createAuthUser('administrador');
+
+    $this->actingAs($admin)
+        ->get(route('admin.solicitudes.index', ['panel' => 'registros']))
+        ->assertOk()
+        ->assertSeeText('Revisa los datos completos antes de aprobar o rechazar una solicitud.')
+        ->assertDontSeeText('Solicitudes enviadas por estudiantes inscritos.');
+
+    $this->actingAs($admin)
+        ->get(route('admin.solicitudes.index', ['panel' => 'equipos']))
+        ->assertOk()
+        ->assertSeeText('Solicitudes enviadas por estudiantes inscritos. La aprobación crea su asignación.')
+        ->assertDontSeeText('Revisa los datos completos antes de aprobar o rechazar una solicitud.');
+
+    $this->actingAs($admin)
+        ->get(route('admin.solicitudes.index', ['panel' => 'desconocido']))
+        ->assertOk()
+        ->assertSeeText('Revisa los datos completos antes de aprobar o rechazar una solicitud.');
 });
 
 test('administrators can open and register student follow-up events', function () {
@@ -487,7 +807,7 @@ test('student follow-up details expose the academic summary and freeze rules', f
         ->assertOk()
         ->assertSee('Materias, docentes y notas')
         ->assertSee('Registrar evento')
-        ->assertSee('Congelamiento');
+        ->assertSee('Congelación');
 
     $this->actingAs($admin)
         ->post(route('seguimiento-estudiantil.events.store', $student->estudiante), [
@@ -592,8 +912,83 @@ test('students can poll and clear only their own notification tray', function ()
     expect(Notificacion::query()->where('user_id', $admin->id)->exists())->toBeTrue();
 });
 
+test('students can clear their notification tray from the details page', function () {
+    $student = createAuthUser('estudiante');
+    $notification = Notificacion::create([
+        'user_id' => $student->id,
+        'tipo' => 'sistema',
+        'titulo' => 'Aviso de prueba',
+        'mensaje' => 'Este aviso debe eliminarse.',
+    ]);
+
+    $this->actingAs($student, 'student')
+        ->post(route('estudiante.notifications.clear'))
+        ->assertRedirect(route('estudiante.notifications.details'))
+        ->assertSessionHas('status', 'La bandeja de notificaciones fue limpiada.');
+
+    $this->assertDatabaseMissing('notificaciones', ['id' => $notification->id]);
+});
+
+test('student notification summaries distinguish account recovery from accepted registration', function () {
+    $student = createAuthUser('estudiante');
+    Notificacion::create([
+        'user_id' => $student->id,
+        'tipo' => 'solicitud_aprobada',
+        'titulo' => 'Solicitud aceptada',
+        'mensaje' => 'Tu solicitud fue aceptada.',
+        'url' => route('estudiante.profile.edit'),
+        'created_at' => now()->subMinute(),
+    ]);
+    Notificacion::create([
+        'user_id' => $student->id,
+        'tipo' => 'recuperacion_aprobada',
+        'titulo' => 'Recuperación aprobada',
+        'mensaje' => 'Tu cuenta fue recuperada con éxito.',
+        'url' => route('estudiante.profile.edit'),
+        'created_at' => now(),
+    ]);
+
+    $this->actingAs($student, 'student')
+        ->getJson(route('estudiante.notifications.index'))
+        ->assertOk()
+        ->assertJsonFragment([
+            'titulo' => 'Recuperación aprobada',
+            'resumen' => 'Recuperación aprobada',
+            'url' => route('estudiante.profile.edit'),
+        ])
+        ->assertJsonFragment([
+            'titulo' => 'Solicitud aceptada',
+            'resumen' => 'Solicitud aceptada',
+            'url' => route('estudiante.profile.edit'),
+        ]);
+
+    $this->actingAs($student, 'student')
+        ->get(route('estudiante.notifications.details'))
+        ->assertOk()
+        ->assertSee('Recuperación aprobada')
+        ->assertSee('Solicitud aceptada');
+});
+
 test('public student registrations notify administrators and enter the audit log', function () {
     $admin = createAuthUser('administrador');
+
+    $this->get(route('registro.aspirante.create'))
+        ->assertOk()
+        ->assertSee('lang="es"', false)
+        ->assertSee('id="nombres" name="nombres"', false)
+        ->assertSee('data-capitalize-first', false)
+        ->assertSee('autocapitalize="sentences" autocorrect="on" spellcheck="true"', false)
+        ->assertSee('id="telefono" name="telefono"', false)
+        ->assertSee('autocapitalize="none" autocorrect="off" spellcheck="false"', false)
+        ->assertSee('id="correo_personal" name="correo_personal"', false)
+        ->assertSee('data-email-domain="gmail.com"', false)
+        ->assertSee('data-email-domain="itibb.edu.bo"', false)
+        ->assertSee('@gmail.com')
+        ->assertSee('@itibb.edu.bo')
+        ->assertSee('name="direccion_zona"', false)
+        ->assertSee('name="direccion_tipo_via"', false)
+        ->assertSee('name="direccion_via"', false)
+        ->assertSee('name="direccion_numero_puerta"', false);
 
     $response = $this->post(route('registro.aspirante.store'), [
         'nombres' => 'Nuevo',
@@ -605,18 +1000,43 @@ test('public student registrations notify administrators and enter the audit log
         'matricula' => 'MAT-TEST-001',
         'generacion_ingreso' => 'I-2026',
         'correo_personal' => 'nuevo@example.test',
-        'direccion' => 'Dirección de prueba',
+        'direccion_zona' => 'Villa Nueva',
+        'direccion_tipo_via' => 'C.',
+        'direccion_via' => 'Sucre',
+        'direccion_numero_puerta' => '88',
     ]);
 
     $solicitud = SolicitudRegistro::query()->where('matricula', 'MAT-TEST-001')->firstOrFail();
 
     $response->assertRedirect(route('registro.aspirante.status', $solicitud->token_cancelacion));
+    expect($solicitud->direccion)->toBe('Zn. Villa Nueva, C. Sucre, #88');
     expect(Notificacion::query()->where('user_id', $admin->id)->where('tipo', 'solicitud')->exists())->toBeTrue();
     $this->assertDatabaseHas('bitacora', [
         'accion' => 'crear_solicitud_registro',
         'entidad' => 'solicitudes_registro',
         'entidad_id' => $solicitud->id,
     ]);
+});
+
+test('public student registrations reject invalid personal names carnet and phone', function () {
+    $this->followingRedirects()
+        ->from(route('registro.aspirante.create'))
+        ->post(route('registro.aspirante.store'), [
+            'nombres' => 'Ana2',
+            'apellido_paterno' => 'Prueba',
+            'apellido_materno' => 'Estudiante2',
+            'ci' => '12A45678',
+            'ci_extension' => 'LP',
+            'telefono' => '7000000',
+        ])
+        ->assertOk()
+        ->assertSee('Por favor, introduzca los datos correctos.')
+        ->assertSee('<p class="mt-1 text-xs text-rose-600">El campo nombres solo puede contener letras y espacios.</p>', false)
+        ->assertSee('<p class="mt-1 text-xs text-rose-600">El campo apellido materno solo puede contener letras y espacios.</p>', false)
+        ->assertSee('<p class="mt-1 text-xs text-rose-600">El campo carnet de identidad debe contener entre 5 y 15 dígitos, sin letras ni separadores.</p>', false)
+        ->assertSee('<p class="mt-1 text-xs text-rose-600">El campo teléfono debe contener exactamente 8 dígitos.</p>', false);
+
+    expect(SolicitudRegistro::query()->where('ci', '12A45678')->exists())->toBeFalse();
 });
 
 test('public student registration allows an optional matricula and assigns the current generation', function () {
@@ -634,6 +1054,20 @@ test('public student registration allows an optional matricula and assigns the c
     expect($solicitud->matricula)->toBeNull()
         ->and($solicitud->semestre)->toBe(1)
         ->and($solicitud->generacion_ingreso)->toMatch('/^(?:I|II)-\d{4}$/');
+});
+
+test('public student registration requires a street type when a street name is provided', function () {
+    $this->from(route('registro.aspirante.create'))
+        ->post(route('registro.aspirante.store'), [
+            'nombres' => 'Via',
+            'apellido_paterno' => 'Sin Tipo',
+            'ci' => '87654323',
+            'ci_extension' => 'LP',
+            'direccion_via' => 'Sucre',
+        ])
+        ->assertSessionHasErrors('direccion_tipo_via');
+
+    expect(SolicitudRegistro::query()->where('ci', '87654323')->exists())->toBeFalse();
 });
 
 test('students cancelling a registration keep the request in the cancelled history', function () {
@@ -668,7 +1102,7 @@ test('approved student registrations create an account and notify the student', 
     $admin = createAuthUser('administrador');
     $solicitud = SolicitudRegistro::create([
         'nombres' => 'Cuenta',
-        'apellido_paterno' => 'Nueva',
+        'apellido_paterno' => 'Castañeta',
         'apellido_materno' => 'Prueba',
         'ci' => '76543210',
         'ci_extension' => 'LP',
@@ -681,7 +1115,7 @@ test('approved student registrations create an account and notify the student', 
 
     $response = $this->actingAs($admin)->post(route('admin.solicitudes.aprobar', $solicitud->id));
 
-    $usuario = User::query()->where('username', 'cuenta_nueva')->firstOrFail();
+    $usuario = User::query()->where('username', 'cuenta_castañeta')->firstOrFail();
 
     $response->assertRedirect(route('admin.solicitudes.credentials'));
     $this->assertDatabaseHas('users', [
@@ -695,16 +1129,21 @@ test('approved student registrations create an account and notify the student', 
         'usuario_creado_id' => $usuario->id,
     ]);
     expect(Notificacion::query()->where('user_id', $usuario->id)->where('tipo', 'solicitud_aprobada')->exists())->toBeTrue();
+    $this->assertDatabaseHas('notificaciones', [
+        'user_id' => $usuario->id,
+        'tipo' => 'solicitud_aprobada',
+        'mensaje' => 'Tu solicitud fue aceptada. Al iniciar sesión, cambia tu usuario y contraseña y registra tus preguntas de seguridad en el panel de tu perfil.',
+    ]);
 
-    expect(session('registro_credenciales.username'))->toBe('cuenta_nueva')
-        ->and(session('registro_credenciales.password'))->toBe('nueva76543210');
+    expect(session('registro_credenciales.username'))->toBe('cuenta_castañeta')
+        ->and(session('registro_credenciales.password'))->toBe('castañeta76543210');
     $passwordTemporal = session('registro_credenciales.password');
 
     $this->actingAs($admin)
         ->get(route('admin.solicitudes.credentials'))
         ->assertOk()
-        ->assertSee('cuenta_nueva')
-        ->assertSee('nueva76543210');
+        ->assertSee('cuenta_castañeta')
+        ->assertSee('castañeta76543210');
 
     $this->actingAs($admin)
         ->post(route('admin.solicitudes.credentials.clear'))
@@ -773,7 +1212,28 @@ test('administrators can approve multiple pending registrations at once', functi
     $solicitudes->each(function (SolicitudRegistro $solicitud): void {
         expect($solicitud->fresh()->estado)->toBe('aprobada');
     });
-    expect(User::query()->whereIn('username', ['ana_prueba', 'luis_prueba'])->count())->toBe(2);
+    $users = User::query()->whereIn('username', ['ana_prueba', 'luis_prueba'])->get();
+    expect($users)->toHaveCount(2);
+    $users->each(function (User $user): void {
+        expect($user->notificaciones()->where('tipo', 'solicitud_aprobada')->value('mensaje'))
+            ->toBe('Tu solicitud fue aceptada. Al iniciar sesión, cambia tu usuario y contraseña y registra tus preguntas de seguridad en el panel de tu perfil.');
+    });
+});
+
+test('legacy student approval notifications are repaired to valid Spanish text', function () {
+    $user = createAuthUser('estudiante');
+    $notification = Notificacion::create([
+        'user_id' => $user->id,
+        'tipo' => 'solicitud_aprobada',
+        'titulo' => 'Solicitud aceptada',
+        'mensaje' => 'Tu solicitud fue aceptada. Al iniciar sesiÃ³n, cambia tu usuario y contraseÃ±a y registra tus preguntas de seguridad en el panel de tu perfil.',
+    ]);
+
+    $migration = require database_path('migrations/2026_11_04_141609_repair_mojibake_in_student_approval_notifications.php');
+    $migration->up();
+
+    expect($notification->fresh()->mensaje)
+        ->toBe('Tu solicitud fue aceptada. Al iniciar sesión, cambia tu usuario y contraseña y registra tus preguntas de seguridad en el panel de tu perfil.');
 });
 
 test('administrators can reject a registration without entering a reason', function () {
@@ -907,7 +1367,7 @@ test('docentes only see schedules assigned to their own profile', function () {
         ->assertDontSee('Materia ajena');
 });
 
-test('an active session is denied after the docente profile becomes inactive', function () {
+test('deactivated docentes are redirected from active sessions to the staff login', function () {
     $docente = createAuthDocente();
     $user = createAuthUser('docente', $docente);
 
@@ -915,7 +1375,13 @@ test('an active session is denied after the docente profile becomes inactive', f
 
     $this->actingAs($user)
         ->get(route('dashboard'))
-        ->assertForbidden();
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('warning', 'La cuenta fue desactivada. Contacte con administración para el acceso.');
+
+    $this->assertGuest();
+
+    $this->get(route('login'))
+        ->assertSee('La cuenta fue desactivada. Contacte con administración para el acceso.');
 });
 
 test('users cannot authenticate with an invalid password', function () {
@@ -939,10 +1405,25 @@ test('users can logout', function () {
     $docente = createAuthDocente();
     $user = createAuthUser('docente', $docente);
 
-    $response = $this->actingAs($user)->post('/logout');
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertHeader('Cache-Control', 'max-age=0, must-revalidate, no-store, private')
+        ->assertSee('data-authenticated-portal="staff"', false)
+        ->assertSee('data-logout-form="staff"', false);
+
+    $response = $this->post('/logout');
 
     $this->assertGuest();
-    $response->assertRedirect('/login');
+    $response
+        ->assertRedirect('/login')
+        ->assertHeader('Cache-Control', 'max-age=0, must-revalidate, no-store, private')
+        ->assertSessionHas('logged_out_portal', 'staff');
+
+    $this->get(route('login'))
+        ->assertSee("sessionStorage.setItem('system-logged-out-portal', 'staff')", false);
+
+    $this->get(route('dashboard'))
+        ->assertRedirect(route('login'));
 });
 
 function createAuthDocente(string $estado = 'activo'): Docente

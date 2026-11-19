@@ -9,7 +9,7 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet">
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-screen bg-slate-50 font-sans antialiased">
+    <body class="min-h-screen bg-slate-50 font-sans antialiased" data-authenticated-portal="student">
         <header class="border-b border-emerald-100 bg-white">
             <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
                 <div class="flex min-w-0 items-center gap-3">
@@ -64,7 +64,7 @@
                 <div class="divide-y divide-slate-100">
                     @forelse ($notificaciones as $notificacion)
                         @php
-                            $esAvisoSistema = in_array($notificacion->tipo, ['sistema', 'solicitud_aprobada'], true);
+                            $esAvisoSistema = $notificacion->tipo === 'sistema';
                         @endphp
                         <div class="flex gap-4 px-5 py-5 sm:px-6">
                             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -76,11 +76,9 @@
                                     <span class="shrink-0 text-[11px] font-semibold text-slate-400">{{ $notificacion->created_at?->format('d/m/Y H:i') }}</span>
                                 </span>
                                 <span class="mt-2 block text-sm leading-6 text-slate-600">{{ $notificacion->mensaje }}</span>
-                                @if ($esAvisoSistema)
-                                    <span class="mt-3 block rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold leading-5 text-amber-900">
-                                        Importante: cambia inmediatamente tus credenciales y registra tus preguntas de seguridad desde tu perfil.
-                                    </span>
-                                @endif
+                                <span class="mt-3 block rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold leading-5 text-amber-900">
+                                    Importante: cambia inmediatamente tus credenciales y registra tus preguntas de seguridad desde tu perfil.
+                                </span>
                                 <span class="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{{ $notificacion->tipo }}</span>
                             </span>
                         </div>
