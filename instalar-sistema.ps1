@@ -854,9 +854,13 @@ try {
         throw 'XAMPP no incluye los archivos esperados de MariaDB.'
     }
 
-    $requiredExtensions = @('curl', 'fileinfo', 'gd', 'mbstring', 'openssl', 'pdo_mysql')
-    Enable-PhpExtensions -Extensions $requiredExtensions
-    $loadedExtensions = & $script:PhpPath -m
+    $requiredExtensions = @('curl', 'fileinfo', 'gd', 'mbstring', 'openssl', 'pdo_mysql', 'zip')
+    $loadedExtensions = @(& $script:PhpPath -m)
+    $missingExtensions = @($requiredExtensions | Where-Object { $loadedExtensions -notcontains $_ })
+    if ($missingExtensions.Count -gt 0) {
+        Enable-PhpExtensions -Extensions $missingExtensions
+        $loadedExtensions = @(& $script:PhpPath -m)
+    }
     foreach ($extension in $requiredExtensions) {
         if ($loadedExtensions -notcontains $extension) {
             throw "La extension PHP '$extension' no esta habilitada en XAMPP."
