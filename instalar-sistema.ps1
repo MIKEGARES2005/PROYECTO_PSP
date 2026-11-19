@@ -385,8 +385,10 @@ function Install-Composer {
 
     Write-InstallerStep 'Instalando Composer y validando su firma oficial'
     $setupPath = Join-Path $script:TemporaryRoot 'composer-setup.php'
+    $signaturePath = Join-Path $script:TemporaryRoot 'composer-setup.sig'
     Invoke-WebRequest -UseBasicParsing -Uri 'https://getcomposer.org/installer' -OutFile $setupPath
-    $expectedSignature = (Invoke-WebRequest -UseBasicParsing -Uri 'https://composer.github.io/installer.sig').Content.Trim().ToLowerInvariant()
+    Invoke-WebRequest -UseBasicParsing -Uri 'https://composer.github.io/installer.sig' -OutFile $signaturePath
+    $expectedSignature = (Get-Content -LiteralPath $signaturePath -Raw -Encoding ASCII).Trim().ToLowerInvariant()
     $actualSignature = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA384).Hash.ToLowerInvariant()
 
     if ($actualSignature -ne $expectedSignature) {
