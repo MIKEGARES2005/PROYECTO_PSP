@@ -446,6 +446,32 @@ function Install-Cloudflared {
     throw "No se encontro cloudflared.exe en $script:CloudflaredPath. Copia la carpeta C:\cloudflared antes de ejecutar el instalador."
 }
 
+function Enable-PhpExtensions {
+    param([string[]] $Extensions)
+
+    $phpIniPath = Join-Path $script:XamppRoot 'php\php.ini'
+    if (-not (Test-Path -LiteralPath $phpIniPath -PathType Leaf)) {
+        throw "No se encontro la configuracion de PHP: $phpIniPath."
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in [System.IO.File]::ReadAllLines($phpIniPath)) {
+        $lines.Add($line)
+    }
+
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        foreach ($extension in $Extensions) {
+            $pattern = '^([ \t]*);[ \t]*(extension[ \t]*=[ \t]*' + [regex]::Escape($extension) + '[ \t]*)$'
+            if ($lines[$index] -match $pattern) {
+                $lines[$index] = [regex]::Replace($lines[$index], $pattern, '$1$2')
+                break
+            }
+        }
+    }
+
+    [System.IO.File]::WriteAllLines($phpIniPath, $lines, [System.Text.UTF8Encoding]::new($false))
+}
+
 function Assert-MySqlListenerIsLocal {
     $listeners = @(Get-NetTCPConnection -LocalPort $script:DatabasePort -State Listen -ErrorAction SilentlyContinue)
     if ($listeners.Count -eq 0) {
@@ -829,6 +855,7 @@ try {
     }
 
     $requiredExtensions = @('curl', 'fileinfo', 'gd', 'mbstring', 'openssl', 'pdo_mysql')
+    Enable-PhpExtensions -Extensions $requiredExtensions
     $loadedExtensions = & $script:PhpPath -m
     foreach ($extension in $requiredExtensions) {
         if ($loadedExtensions -notcontains $extension) {
