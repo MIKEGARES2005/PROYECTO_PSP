@@ -10,7 +10,7 @@ $script:ProjectRoot = 'C:\proyecto psp\sistema_equipos'
 $script:XamppRoot = 'C:\xampp'
 $script:XamppVersion = '8.5.12'
 $script:XamppInstallerUrl = 'https://sourceforge.net/projects/xampp/files/XAMPP%20Windows/8.5.12/xampp-windows-x64-8.5.12-0-VS17-installer.exe/download'
-$script:XamppInstallerSha1 = '876d0ed73a4fa52d997a127a6d9897f90303bb37'
+$script:XamppInstallerSha256 = '54c4c492def0734fa156843b571036bddbb7020f89e9881ba9d8c02db124263c'
 $script:VcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
 $script:DatabaseName = 'sistema_equipos'
 $script:DatabaseUsername = 'sistema_equipos_app'
@@ -264,9 +264,9 @@ function Install-Xampp {
     $installerPath = Join-Path $script:TemporaryRoot 'xampp-installer.exe'
     Invoke-WebRequest -UseBasicParsing -Uri $script:XamppInstallerUrl -OutFile $installerPath
 
-    $actualHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA1).Hash.ToLowerInvariant()
-    if ($actualHash -ne $script:XamppInstallerSha1) {
-        throw "La verificacion SHA-1 del instalador de XAMPP fallo. Se esperaba $script:XamppInstallerSha1 y se obtuvo $actualHash."
+    $actualHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $script:XamppInstallerSha256) {
+        throw "La verificacion SHA-256 del instalador de XAMPP fallo. Se esperaba $script:XamppInstallerSha256 y se obtuvo $actualHash."
     }
 
     $process = Start-Process -FilePath $installerPath `
@@ -713,7 +713,7 @@ if ($PlanOnly) {
     Write-Output 'Plan de instalacion del Sistema de Equipos'
     Write-Output "Repositorio: https://github.com/$script:ProjectRepository (rama $script:ProjectBranch)"
     Write-Output "Destino: $script:ProjectRoot"
-    Write-Output "XAMPP: $script:XamppVersion (SHA-1 verificado), PHP incluido"
+    Write-Output "XAMPP: $script:XamppVersion (SHA-256 verificado), PHP incluido"
     Write-Output 'Microsoft Visual C++ Redistributable: firma digital oficial verificada'
     Write-Output 'Node.js: ultima version LTS oficial (SHA-256 verificado)'
     Write-Output 'Composer: instalador con firma SHA-384 oficial'
