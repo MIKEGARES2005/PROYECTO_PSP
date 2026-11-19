@@ -706,6 +706,36 @@ function Restore-ApplicationDatabase {
         $backupContent = $mariaDbCompatibleBackup
     }
 
+    $generatedForeignKeyColumns = @(
+        'alerta_abierta',
+        'titular_activo',
+        'horario_titular_activo',
+        'incidencia_abierta'
+    )
+    foreach ($columnName in $generatedForeignKeyColumns) {
+        $columnPattern = '(?s)\s*`' + [regex]::Escape($columnName) + '`\s+[^,]*GENERATED ALWAYS AS\s*\(.*?\)\s+STORED,\r?\n'
+        $updatedBackup = [regex]::Replace($backupContent, $columnPattern, "`r`n")
+        if ($updatedBackup -ne $backupContent) {
+            Write-Host "Se omitio la columna generada $columnName por compatibilidad con MariaDB 10.4." -ForegroundColor Yellow
+            $backupContent = $updatedBackup
+        }
+    }
+
+    $generatedForeignKeyIndexes = @(
+        'alertas_abiertas_unique',
+        'asignaciones_titular_activo_unique',
+        'asignaciones_horario_titular_activo_unique',
+        'incidencias_abiertas_unique'
+    )
+    foreach ($indexName in $generatedForeignKeyIndexes) {
+        $indexPattern = '(?m)^\s*UNIQUE KEY `' + [regex]::Escape($indexName) + '`[^\r\n]*\r?\n'
+        $updatedBackup = [regex]::Replace($backupContent, $indexPattern, '')
+        if ($updatedBackup -ne $backupContent) {
+            Write-Host "Se omitio el indice $indexName por depender de una columna generada no compatible." -ForegroundColor Yellow
+            $backupContent = $updatedBackup
+        }
+    }
+
     $sqlPath = Join-Path $script:TemporaryRoot 'database-restore.sql'
     $outputPath = Join-Path $script:TemporaryRoot 'database-restore.out.log'
     $errorPath = Join-Path $script:TemporaryRoot 'database-restore.err.log'
