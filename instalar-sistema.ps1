@@ -709,14 +709,23 @@ function Restore-ApplicationDatabase {
     $sqlPath = Join-Path $script:TemporaryRoot 'database-restore.sql'
     $outputPath = Join-Path $script:TemporaryRoot 'database-restore.out.log'
     $errorPath = Join-Path $script:TemporaryRoot 'database-restore.err.log'
+    $restoreScriptPath = Join-Path $script:TemporaryRoot 'database-restore.cmd'
     [System.IO.File]::WriteAllText($sqlPath, $backupContent, [System.Text.UTF8Encoding]::new($false))
 
     $mysqlArguments = '--protocol=tcp --host=127.0.0.1 --port=3306 --user=root --database=' + $script:DatabaseName + ' --binary-mode=1'
-    $command = '"' + $script:MySqlPath + '" ' + $mysqlArguments + ' < "' + $sqlPath + '" > "' + $outputPath + '" 2> "' + $errorPath + '"'
+    $command = '@echo off' + "`r`n" +
+        '"' + $script:MySqlPath + '" ' + $mysqlArguments + ' < "' + $sqlPath + '" > "' + $outputPath + '" 2> "' + $errorPath + '"' + "`r`n" +
+        'exit /b %errorlevel%' + "`r`n"
+    [System.IO.File]::WriteAllText($restoreScriptPath, $command, [System.Text.Encoding]::ASCII)
     $process = Start-Process -FilePath $env:ComSpec `
-        -ArgumentList @('/d', '/s', '/c', $command) `
+        -ArgumentList @('/d', '/c', 'call', ('"' + $restoreScriptPath + '"')) `
         -WindowStyle Hidden -Wait -PassThru
     $exitCode = $process.ExitCode
+    $standardOutput = if (Test-Path -LiteralPath $outputPath) {
+        [System.IO.File]::ReadAllText($outputPath)
+    } else {
+        ''
+    }
     $standardError = if (Test-Path -LiteralPath $errorPath) {
         [System.IO.File]::ReadAllText($errorPath)
     } else {
@@ -724,7 +733,7 @@ function Restore-ApplicationDatabase {
     }
 
     if ($exitCode -ne 0) {
-        throw "MariaDB rechazo la restauracion del backup. $standardError"
+        throw "MariaDB rechazo la restauracion del backup. $standardError $standardOutput"
     }
 }
 
