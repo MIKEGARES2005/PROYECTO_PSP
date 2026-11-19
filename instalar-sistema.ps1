@@ -364,6 +364,15 @@ function Install-NodeLts {
 }
 
 function Install-Composer {
+    $existingComposer = Get-Command 'composer.bat', 'composer.exe', 'composer' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -ne $existingComposer) {
+        $script:ComposerPath = $existingComposer.Source
+        Write-Host "Composer existente detectado en $($script:ComposerPath); se conservara."
+        Invoke-CheckedCommand -FilePath $script:ComposerPath -Arguments @('--version') -WorkingDirectory $script:XamppRoot
+        return
+    }
+
     if (Test-Path -LiteralPath (Join-Path $script:XamppRoot 'php\composer.phar')) {
         $composerBatch = Join-Path $script:XamppRoot 'php\composer.bat'
         if (-not (Test-Path -LiteralPath $composerBatch)) {
