@@ -395,8 +395,13 @@ function Install-Composer {
         throw 'La firma del instalador de Composer no coincide con la publicada oficialmente.'
     }
 
+    $composerInstallDirectory = Join-Path $script:XamppRoot 'php'
+    if (-not (Test-Path -LiteralPath $composerInstallDirectory -PathType Container)) {
+        throw "No se encontro la carpeta de PHP de XAMPP: $composerInstallDirectory."
+    }
+
     Invoke-CheckedCommand -FilePath $script:PhpPath `
-        -Arguments @($setupPath, '--install-dir=' + (Join-Path $script:XamppRoot 'php'), '--filename=composer.phar') `
+        -Arguments @($setupPath, '--install-dir', $composerInstallDirectory, '--filename', 'composer.phar') `
         -WorkingDirectory $script:TemporaryRoot
 
     $composerBatch = Join-Path $script:XamppRoot 'php\composer.bat'
