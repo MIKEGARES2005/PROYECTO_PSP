@@ -700,7 +700,7 @@ function Restore-ApplicationDatabase {
     $process.StartInfo.Arguments = '--protocol=tcp --host=127.0.0.1 --port=3306 --user=root --database=' + $script:DatabaseName + ' --binary-mode=1'
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.RedirectStandardInput = $true
-    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardOutput = $false
     $process.StartInfo.RedirectStandardError = $true
     $process.StartInfo.CreateNoWindow = $true
 
@@ -721,7 +721,6 @@ function Restore-ApplicationDatabase {
 
     $process.StandardInput.Write($backupContent)
     $process.StandardInput.Close()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
     $standardError = $process.StandardError.ReadToEnd()
     $process.WaitForExit()
     $exitCode = $process.ExitCode
