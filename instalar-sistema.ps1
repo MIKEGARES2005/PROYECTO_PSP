@@ -695,19 +695,6 @@ function Test-DatabaseBackup {
 function Restore-ApplicationDatabase {
     Write-InstallerStep "Restaurando el backup SQL desde $script:DatabaseBackupPath"
 
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo.FileName = $script:MySqlPath
-    $process.StartInfo.Arguments = '--protocol=tcp --host=127.0.0.1 --port=3306 --user=root --database=' + $script:DatabaseName + ' --binary-mode=1'
-    $process.StartInfo.UseShellExecute = $false
-    $process.StartInfo.RedirectStandardInput = $true
-    $process.StartInfo.RedirectStandardOutput = $false
-    $process.StartInfo.RedirectStandardError = $false
-    $process.StartInfo.CreateNoWindow = $true
-
-    if (-not $process.Start()) {
-        throw 'No se pudo iniciar el cliente de MariaDB para restaurar el backup.'
-    }
-
     $backupContent = [System.IO.File]::ReadAllText($script:DatabaseBackupPath)
     $mariaDbCompatibleBackup = [regex]::Replace(
         $backupContent,
@@ -719,14 +706,25 @@ function Restore-ApplicationDatabase {
         $backupContent = $mariaDbCompatibleBackup
     }
 
-    $process.StandardInput.Write($backupContent)
-    $process.StandardInput.Close()
-    $process.WaitForExit()
+    $sqlPath = Join-Path $script:TemporaryRoot 'database-restore.sql'
+    $outputPath = Join-Path $script:TemporaryRoot 'database-restore.out.log'
+    $errorPath = Join-Path $script:TemporaryRoot 'database-restore.err.log'
+    [System.IO.File]::WriteAllText($sqlPath, $backupContent, [System.Text.UTF8Encoding]::new($false))
+
+    $mysqlArguments = '--protocol=tcp --host=127.0.0.1 --port=3306 --user=root --database=' + $script:DatabaseName + ' --binary-mode=1'
+    $command = '"' + $script:MySqlPath + '" ' + $mysqlArguments + ' < "' + $sqlPath + '" > "' + $outputPath + '" 2> "' + $errorPath + '"'
+    $process = Start-Process -FilePath $env:ComSpec `
+        -ArgumentList @('/d', '/s', '/c', $command) `
+        -WindowStyle Hidden -Wait -PassThru
     $exitCode = $process.ExitCode
-    $process.Dispose()
+    $standardError = if (Test-Path -LiteralPath $errorPath) {
+        [System.IO.File]::ReadAllText($errorPath)
+    } else {
+        ''
+    }
 
     if ($exitCode -ne 0) {
-        throw 'MariaDB rechazo la restauracion del backup. Revisa el mensaje mostrado por el cliente de MariaDB.'
+        throw "MariaDB rechazo la restauracion del backup. $standardError"
     }
 }
 
