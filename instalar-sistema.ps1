@@ -779,8 +779,12 @@ try {
 
     Write-InstallerStep 'Descargando el codigo publicado en GitHub'
     $archivePath = Join-Path $script:TemporaryRoot 'project.zip'
-    $archiveUrl = 'https://github.com/' + $script:ProjectRepository + '/archive/refs/heads/' + $script:ProjectBranch + '.zip'
-    Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $archivePath
+    $archiveUrl = 'https://codeload.github.com/' + $script:ProjectRepository + '/zip/refs/heads/' + $script:ProjectBranch
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $archivePath
+    } catch {
+        throw "No se pudo descargar el codigo desde GitHub. Comprueba la conexion a Internet y el DNS; detalle: $($_.Exception.Message)"
+    }
     Expand-Archive -LiteralPath $archivePath -DestinationPath $script:TemporaryRoot
 
     $extractedRoot = Get-ChildItem -LiteralPath $script:TemporaryRoot -Directory |
