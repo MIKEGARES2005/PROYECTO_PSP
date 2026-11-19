@@ -701,7 +701,7 @@ function Restore-ApplicationDatabase {
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.RedirectStandardInput = $true
     $process.StartInfo.RedirectStandardOutput = $false
-    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.RedirectStandardError = $false
     $process.StartInfo.CreateNoWindow = $true
 
     if (-not $process.Start()) {
@@ -721,13 +721,12 @@ function Restore-ApplicationDatabase {
 
     $process.StandardInput.Write($backupContent)
     $process.StandardInput.Close()
-    $standardError = $process.StandardError.ReadToEnd()
     $process.WaitForExit()
     $exitCode = $process.ExitCode
     $process.Dispose()
 
     if ($exitCode -ne 0) {
-        throw "MariaDB rechazo la restauracion del backup. $standardError"
+        throw 'MariaDB rechazo la restauracion del backup. Revisa el mensaje mostrado por el cliente de MariaDB.'
     }
 }
 
