@@ -1,5 +1,6 @@
 param(
-    [switch] $PlanOnly
+    [switch] $PlanOnly,
+    [string] $XamppInstallerPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -260,9 +261,23 @@ function Install-Xampp {
         throw "Ya existe $script:XamppRoot, pero no contiene un PHP compatible. El instalador no modificara esa carpeta."
     }
 
-    Write-InstallerStep "Descargando XAMPP $script:XamppVersion con PHP y MariaDB"
-    $installerPath = Join-Path $script:TemporaryRoot 'xampp-installer.exe'
-    Invoke-WebRequest -UseBasicParsing -Uri $script:XamppInstallerUrl -OutFile $installerPath
+    if ([string]::IsNullOrWhiteSpace($XamppInstallerPath)) {
+        Write-InstallerStep "Descargando XAMPP $script:XamppVersion con PHP y MariaDB"
+        $installerPath = Join-Path $script:TemporaryRoot 'xampp-installer.exe'
+        Invoke-WebRequest -UseBasicParsing -Uri $script:XamppInstallerUrl -OutFile $installerPath
+    } else {
+        $installerPath = [System.IO.Path]::GetFullPath($XamppInstallerPath)
+        if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+            throw "No se encontro el instalador local de XAMPP en $installerPath."
+        }
+
+        Write-InstallerStep "Usando el instalador local de XAMPP: $installerPath"
+    }
+
+    $signatureBytes = [System.IO.File]::ReadAllBytes($installerPath)
+    if ($signatureBytes.Length -lt 2 -or $signatureBytes[0] -ne 0x4D -or $signatureBytes[1] -ne 0x5A) {
+        throw 'La descarga de XAMPP no es un ejecutable valido. SourceForge devolvio una pagina HTML; descarga el instalador desde el navegador y colocalo junto al archivo instalar-sistema.bat.'
+    }
 
     $actualHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $script:XamppInstallerSha256) {

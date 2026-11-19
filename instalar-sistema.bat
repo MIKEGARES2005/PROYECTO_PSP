@@ -12,7 +12,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER_FILE%"
+set "XAMPP_INSTALLER_FILE=%~dp0xampp-windows-x64-8.5.12-0-VS17-installer.exe"
+if exist "%XAMPP_INSTALLER_FILE%" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER_FILE%" -XamppInstallerPath "%XAMPP_INSTALLER_FILE%"
+) else (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER_FILE%"
+)
 set "INSTALLER_EXIT_CODE=%ERRORLEVEL%"
 
 del "%INSTALLER_FILE%" >nul 2>&1
