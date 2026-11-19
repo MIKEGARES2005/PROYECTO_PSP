@@ -247,6 +247,7 @@ function ConvertFrom-SecureStringToPlainText {
 }
 
 function Install-Xampp {
+    Remove-PhpOpenSslDuplicate
     $existingPhpVersion = Get-PhpVersion -PhpExecutable $script:PhpPath
     if ($null -ne $existingPhpVersion) {
         if ($existingPhpVersion -lt [version] '8.3.0') {
@@ -295,6 +296,28 @@ function Install-Xampp {
     $installedVersion = Get-PhpVersion -PhpExecutable $script:PhpPath
     if ($null -eq $installedVersion -or $installedVersion -lt [version] '8.3.0') {
         throw 'XAMPP termino, pero no se encontro PHP 8.3 o superior en C:\xampp\php\php.exe.'
+    }
+}
+
+function Remove-PhpOpenSslDuplicate {
+    $phpIniPath = Join-Path $script:XamppRoot 'php\php.ini'
+    if (-not (Test-Path -LiteralPath $phpIniPath -PathType Leaf)) {
+        return
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $changed = $false
+    foreach ($line in [System.IO.File]::ReadAllLines($phpIniPath)) {
+        if ($line -match '^([ \t]*)extension[ \t]*=[ \t]*openssl[ \t]*$') {
+            $lines.Add($Matches[1] + ';' + $line.TrimStart())
+            $changed = $true
+        } else {
+            $lines.Add($line)
+        }
+    }
+
+    if ($changed) {
+        [System.IO.File]::WriteAllLines($phpIniPath, $lines, [System.Text.UTF8Encoding]::new($false))
     }
 }
 
