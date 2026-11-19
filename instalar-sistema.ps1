@@ -425,9 +425,18 @@ function Install-Composer {
 
 function Install-Cloudflared {
     if (Test-Path -LiteralPath $script:CloudflaredPath -PathType Leaf) {
-        & $script:CloudflaredPath --version 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            throw "El ejecutable existente en $script:CloudflaredPath no pudo ejecutarse. No se sobrescribio."
+        $signatureBytes = [System.IO.File]::ReadAllBytes($script:CloudflaredPath)
+        if ($signatureBytes.Length -lt 2 -or $signatureBytes[0] -ne 0x4D -or $signatureBytes[1] -ne 0x5A) {
+            throw "El archivo $script:CloudflaredPath no es un ejecutable valido de Windows. Copia una version integra de cloudflared.exe."
+        }
+
+        try {
+            & $script:CloudflaredPath --version 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'codigo de salida distinto de cero'
+            }
+        } catch {
+            throw "El ejecutable $script:CloudflaredPath esta danado, incompleto o no es compatible con esta PC. Reemplazalo por una copia integra de cloudflared.exe."
         }
 
         Write-Host "cloudflared existente detectado en $script:CloudflaredPath; se conservara."
